@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { login, logout, status } from "./commands/auth.js";
 import { deploy } from "./commands/deploy.js";
+import { bucket } from "./commands/bucket.js";
 
 const VERSION = "0.1.0";
 
@@ -15,6 +16,8 @@ function printHelp() {
     auth logout    Remove stored API key
     auth status    Show authentication status
     deploy         Deploy agent to Schift Cloud (upload data, create bucket)
+    bucket ls      List buckets
+    bucket rm      Delete bucket (requires --yes)
 
   Options:
     --version      Show version
@@ -47,6 +50,10 @@ async function main() {
 
   if (command === "deploy") {
     return deploy(args.slice(1));
+  }
+
+  if (command === "bucket") {
+    return bucket(args.slice(1));
   }
 
   console.error(`  Unknown command: ${command}\n`);
