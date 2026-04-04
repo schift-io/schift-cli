@@ -22,14 +22,6 @@
   ],
   "author": "Schift <hello@schift.io>",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/schift-io/schift-cli.git"
-  },
-  "bugs": {
-    "url": "https://github.com/schift-io/schift-cli/issues"
-  },
-  "homepage": "https://github.com/schift-io/schift-cli#readme",
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsup": "^8.0.0",

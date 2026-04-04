@@ -26,6 +26,19 @@ interface DeployRuntime {
   sleep: (ms: number) => Promise<void>;
 }
 
+function loadProjectApiKey(cwd: string): string | null {
+  const envLocalPath = resolve(cwd, ".env.local");
+  if (!existsSync(envLocalPath)) return null;
+
+  const content = readFileSync(envLocalPath, "utf-8");
+  const match = content.match(/^SCHIFT_API_KEY=(.*)$/m);
+  return match?.[1]?.trim() || null;
+}
+
+function resolveApiKey(runtime: DeployRuntime): string | null {
+  return loadProjectApiKey(runtime.cwd) || runtime.getApiKey();
+}
+
 const DEFAULT_OPTIONS: DeployOptions = {
   waitForProcessing: true,
   smoke: true,
@@ -100,7 +113,7 @@ async function apiRequest(
   apiPath: string,
   body?: unknown,
 ): Promise<any> {
-  const apiKey = runtime.getApiKey();
+  const apiKey = resolveApiKey(runtime);
   if (!apiKey) {
     throw new Error('Not authenticated. Run "schift auth login" first.');
   }
@@ -127,7 +140,7 @@ async function apiRequest(
 }
 
 async function uploadFile(runtime: DeployRuntime, bucketId: string, filePath: string): Promise<any> {
-  const apiKey = runtime.getApiKey();
+  const apiKey = resolveApiKey(runtime);
   if (!apiKey) {
     throw new Error('Not authenticated. Run "schift auth login" first.');
   }
@@ -217,7 +230,7 @@ export async function deployWithRuntime(
 ): Promise<void> {
   const config = loadProjectConfig(runtime.cwd);
 
-  if (!runtime.getApiKey()) {
+  if (!resolveApiKey(runtime)) {
     runtime.log('  Error: Not authenticated. Run "schift auth login" first.\n');
     runtime.exit(1);
     return;
@@ -319,6 +332,7 @@ export async function deployWithRuntime(
     jobs: allJobIds.length,
     smokeOk,
   };
+  const trialEndpoint = `${apiUrl}/v1/trial/chat`;
 
   if (options.json) {
     runtime.log(JSON.stringify(summary));
@@ -329,8 +343,13 @@ export async function deployWithRuntime(
   runtime.log("\n  Deployed successfully!\n");
   runtime.log(`  Agent URL: ${agentEndpoint}`);
   runtime.log("  Webhook URL: Configure webhook in Schift dashboard");
-  runtime.log("\n  To use:");
+  runtime.log("\n  Search now:");
   runtime.log(`  curl -X POST ${agentEndpoint} \\\n    -H \"Authorization: Bearer $SCHIFT_API_KEY\" \\\n    -H \"Content-Type: application/json\" \\\n    -d '{\"query\": \"What can you help me with?\", \"top_k\": 5}'\n`);
+  runtime.log(`  Trial chat now (bucket: ${agent.bucket_name}):`);
+  runtime.log(`  curl -X POST ${trialEndpoint} \\\n    -H \"Authorization: Bearer $SCHIFT_API_KEY\" \\\n    -H \"Content-Type: application/json\" \\\n    -d '{\"bucket\": \"${agent.bucket_name}\", \"message\": \"Say hello from Schift in one short sentence.\"}'\n`);
+  runtime.log("  This is a one-time onboarding trial. For ongoing usage, configure your own provider.");
+  runtime.log("  Configure BYOK:");
+  runtime.log("  schift providers set anthropic");
 }
 
 export async function deploy(argv: string[] = []): Promise<void> {

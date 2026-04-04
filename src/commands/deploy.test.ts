@@ -137,7 +137,12 @@ describe("deployWithRuntime", () => {
     expect(output).toContain("Stage 6/6");
     expect(output).toContain("Source provenance");
     expect(output).toContain("Webhook URL");
-    expect(output).toContain("To use");
+    expect(output).toContain("Search now");
+    expect(output).toContain("Trial chat now");
+    expect(output).toContain("support-bot-docs");
+    expect(output).toContain("/v1/trial/chat");
+    expect(output).toContain("Configure BYOK");
+    expect(output).toContain("schift providers set anthropic");
 
     expect(fetchCalls.some((c) => c.includes("GET https://api.schift.io/v1/jobs/j1"))).toBe(true);
     expect(fetchCalls.some((c) => c.includes("POST https://api.schift.io/v1/buckets/b1/search"))).toBe(true);
@@ -302,5 +307,126 @@ describe("deployWithRuntime", () => {
 
     expect(fetchCalls.some((c) => c.includes("/v1/jobs/j1"))).toBe(false);
     expect(fetchCalls.some((c) => c.includes("/v1/buckets/b1/search"))).toBe(false);
+  });
+
+  it("uses SCHIFT_API_KEY from project .env.local when runtime key is missing", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "schift-deploy-test-"));
+    fs.writeFileSync(
+      path.join(tmp, "schift.config.json"),
+      JSON.stringify(
+        {
+          name: "support-bot",
+          template: "cs-chatbot",
+          agent: {
+            name: "support-bot",
+            model: "gpt-4o-mini",
+            instructions: "helpful",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+    fs.writeFileSync(path.join(tmp, ".env.local"), "SCHIFT_API_KEY=sch_from_env_local\n", "utf-8");
+
+    const authHeaders: string[] = [];
+
+    const runtime = {
+      cwd: tmp,
+      getApiKey: () => null,
+      getApiUrl: () => "https://api.schift.io",
+      log: () => undefined,
+      write: () => undefined,
+      exit: (code: number) => {
+        throw new Error(`EXIT:${code}`);
+      },
+      sleep: async () => undefined,
+      fetch: async (_url: string, init?: RequestInit) => {
+        authHeaders.push(String((init?.headers as Record<string, string>)?.Authorization || ""));
+        return new Response(
+          JSON.stringify({
+            agent_id: "a1",
+            slug: "support-bot",
+            bucket_id: "b1",
+            bucket_name: "support-bot-docs",
+            endpoint: "/v1/agents/support-bot/query",
+          }),
+          { status: 200 },
+        );
+      },
+    };
+
+    await deployWithRuntime(
+      {
+        waitForProcessing: false,
+        smoke: false,
+        json: true,
+      },
+      runtime,
+    );
+
+    expect(authHeaders).toContain("Bearer sch_from_env_local");
+  });
+
+  it("prefers project .env.local over runtime key", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "schift-deploy-test-"));
+    fs.writeFileSync(
+      path.join(tmp, "schift.config.json"),
+      JSON.stringify(
+        {
+          name: "support-bot",
+          template: "cs-chatbot",
+          agent: {
+            name: "support-bot",
+            model: "gpt-4o-mini",
+            instructions: "helpful",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+    fs.writeFileSync(path.join(tmp, ".env.local"), "SCHIFT_API_KEY=sch_from_env_local\n", "utf-8");
+
+    const authHeaders: string[] = [];
+
+    const runtime = {
+      cwd: tmp,
+      getApiKey: () => "sch_from_runtime",
+      getApiUrl: () => "https://api.schift.io",
+      log: () => undefined,
+      write: () => undefined,
+      exit: (code: number) => {
+        throw new Error(`EXIT:${code}`);
+      },
+      sleep: async () => undefined,
+      fetch: async (_url: string, init?: RequestInit) => {
+        authHeaders.push(String((init?.headers as Record<string, string>)?.Authorization || ""));
+        return new Response(
+          JSON.stringify({
+            agent_id: "a1",
+            slug: "support-bot",
+            bucket_id: "b1",
+            bucket_name: "support-bot-docs",
+            endpoint: "/v1/agents/support-bot/query",
+          }),
+          { status: 200 },
+        );
+      },
+    };
+
+    await deployWithRuntime(
+      {
+        waitForProcessing: false,
+        smoke: false,
+        json: true,
+      },
+      runtime,
+    );
+
+    expect(authHeaders).toContain("Bearer sch_from_env_local");
+    expect(authHeaders).not.toContain("Bearer sch_from_runtime");
   });
 });

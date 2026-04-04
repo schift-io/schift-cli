@@ -4,16 +4,43 @@ import {
   type ServerResponse,
 } from "node:http";
 import { randomBytes } from "node:crypto";
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getApiKey, setApiKey, clearApiKey, getWebUrl } from "../config.js";
 
+function openBrowserForPlatform(
+  platform: NodeJS.Platform,
+  url: string,
+  runner: (command: string, args: string[]) => void,
+) {
+  if (platform === "darwin") {
+    runner("open", [url]);
+    return;
+  }
+  if (platform === "win32") {
+    runner("cmd", ["/c", "start", "", url]);
+    return;
+  }
+  runner("xdg-open", [url]);
+}
+
 function openBrowser(url: string) {
-  const platform = process.platform;
-  if (platform === "darwin") execSync(`open "${url}"`);
-  else if (platform === "win32") execSync(`start "" "${url}"`);
-  else execSync(`xdg-open "${url}"`);
+  openBrowserForPlatform(process.platform, url, (command, args) => {
+    const result = spawnSync(command, args, { stdio: "ignore" });
+    if (result.error) throw result.error;
+    if (typeof result.status === "number" && result.status !== 0) {
+      throw new Error(`Failed to open browser: ${command} exited with ${result.status}`);
+    }
+  });
+}
+
+export function __test_openBrowserForPlatform(
+  platform: NodeJS.Platform,
+  url: string,
+  runner: (command: string, args: string[]) => void,
+) {
+  openBrowserForPlatform(platform, url, runner);
 }
 
 function findFreePort(): Promise<number> {
