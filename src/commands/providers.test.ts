@@ -76,7 +76,7 @@ describe("setProviderWithRuntime", () => {
           fetch: async () => new Response("ok", { status: 200 }),
         },
       ),
-    ).rejects.toThrow('Not authenticated. Run "scloud auth login" first.');
+    ).rejects.toThrow('Not authenticated. Run "schift auth login" first.');
   });
 
   it("throws formatted api errors", async () => {
@@ -108,7 +108,7 @@ describe("providers", () => {
 
   it("prints usage for invalid argv", async () => {
     await providers([]);
-    expect(logSpy).toHaveBeenCalledWith('  Usage: scloud providers set <openai|google|anthropic>\n');
+    expect(logSpy).toHaveBeenCalledWith('  Usage: schift providers set <openai|google|anthropic>\n');
   });
 
   it("throws when SCHIFT_PROVIDER_API_KEY is missing", async () => {

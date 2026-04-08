@@ -17,12 +17,12 @@ function createRuntime(): CliRuntime {
 }
 
 describe("printHelp", () => {
-  it("prints scloud help text", () => {
+  it("prints schift help text", () => {
     const logs: string[] = [];
     printHelp((msg) => logs.push(msg));
 
-    expect(logs[0]).toContain(`scloud v${VERSION}`);
-    expect(logs[0]).toContain("Usage: scloud <command>");
+    expect(logs[0]).toContain(`schift v${VERSION}`);
+    expect(logs[0]).toContain("Usage: schift <command>");
     expect(logs[0]).toContain("auth login");
     expect(logs[0]).toContain("providers set");
   });
@@ -44,7 +44,7 @@ describe("runCli", () => {
     await runCli(["--version"], runtime);
     await runCli(["-v"], runtime);
 
-    expect(runtime.log).toHaveBeenCalledWith(`scloud v${VERSION}`);
+    expect(runtime.log).toHaveBeenCalledWith(`schift v${VERSION}`);
     expect(runtime.log).toHaveBeenCalledTimes(2);
   });
 
@@ -64,7 +64,7 @@ describe("runCli", () => {
     const runtime = createRuntime();
     await runCli(["auth", "wat"], runtime);
 
-    expect(runtime.log).toHaveBeenCalledWith('  Usage: scloud auth <login|logout|status>\n');
+    expect(runtime.log).toHaveBeenCalledWith('  Usage: schift auth <login|logout|status>\n');
   });
 
   it("dispatches deploy and providers with sliced args", async () => {

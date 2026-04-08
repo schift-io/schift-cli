@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { login, logout, status } from "./commands/auth.js";
 import { deploy } from "./commands/deploy.js";
 import { providers } from "./commands/providers.js";
+import { remember, search, ask, ingest } from "./commands/memory.js";
 
 export const VERSION = "0.1.0";
 
@@ -15,6 +16,10 @@ export interface CliRuntime {
   status: () => Promise<void> | void;
   deploy: (argv?: string[]) => Promise<void> | void;
   providers: (argv?: string[]) => Promise<void> | void;
+  remember: (argv: string[]) => Promise<void> | void;
+  search: (argv: string[]) => Promise<void> | void;
+  ask: (argv: string[]) => Promise<void> | void;
+  ingest: (argv: string[]) => Promise<void> | void;
 }
 
 /* v8 ignore start */
@@ -28,22 +33,32 @@ function defaultRuntime(): CliRuntime {
     status,
     deploy,
     providers,
+    remember,
+    search,
+    ask,
+    ingest,
   };
 }
 /* v8 ignore stop */
 
 export function printHelp(logger: (message: string) => void = console.log) {
   logger(`
-  scloud v${VERSION} - AI Agent CLI
+  schift v${VERSION} - AI Agent CLI
 
-  Usage: scloud <command>
+  Usage: schift <command>
 
   Commands:
-    auth login     Authenticate with Scloud (opens browser)
+    auth login     Authenticate with Schift (opens browser)
     auth logout    Remove stored API key
     auth status    Show authentication status
-    deploy         Deploy agent to Scloud (upload data, create bucket)
+    deploy         Deploy agent to Schift (upload data, create bucket)
     providers set  Configure org-level LLM provider access
+
+  Second Brain:
+    remember "..."   Save a note to your knowledge base
+    search "..."     Semantic search your knowledge
+    ask "..."        RAG Q&A over your knowledge
+    ingest ./path    Bulk ingest local files
 
   Options:
     --version      Show version
@@ -61,7 +76,7 @@ export async function runCli(args: string[], runtime: CliRuntime = defaultRuntim
   }
 
   if (command === "--version" || command === "-v") {
-    runtime.log(`scloud v${VERSION}`);
+    runtime.log(`schift v${VERSION}`);
     return;
   }
 
@@ -69,7 +84,7 @@ export async function runCli(args: string[], runtime: CliRuntime = defaultRuntim
     if (subcommand === "login") return runtime.login();
     if (subcommand === "logout") return runtime.logout();
     if (subcommand === "status") return runtime.status();
-    runtime.log('  Usage: scloud auth <login|logout|status>\n');
+    runtime.log('  Usage: schift auth <login|logout|status>\n');
     return;
   }
 
@@ -79,6 +94,22 @@ export async function runCli(args: string[], runtime: CliRuntime = defaultRuntim
 
   if (command === "providers") {
     return runtime.providers(args.slice(1));
+  }
+
+  if (command === "remember" || command === "rem" || command === "save") {
+    return runtime.remember(args.slice(1));
+  }
+
+  if (command === "search" || command === "find") {
+    return runtime.search(args.slice(1));
+  }
+
+  if (command === "ask") {
+    return runtime.ask(args.slice(1));
+  }
+
+  if (command === "ingest") {
+    return runtime.ingest(args.slice(1));
   }
 
   runtime.error(`  Unknown command: ${command}\n`);

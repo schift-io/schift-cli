@@ -230,7 +230,7 @@ describe("status and logout", () => {
   it("prints unauthenticated status when no key exists", async () => {
     const { status } = await import("./auth.js");
     status();
-    expect(logSpy).toHaveBeenCalledWith('  Not authenticated. Run "scloud auth login" to get started.\n');
+    expect(logSpy).toHaveBeenCalledWith('  Not authenticated. Run "schift auth login" to get started.\n');
   });
 
   it("logout removes stored key when present", async () => {

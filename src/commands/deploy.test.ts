@@ -142,7 +142,7 @@ describe("deployWithRuntime", () => {
     expect(output).toContain("support-bot-docs");
     expect(output).toContain("/v1/trial/chat");
     expect(output).toContain("Configure BYOK");
-    expect(output).toContain("scloud providers set anthropic");
+    expect(output).toContain("schift providers set anthropic");
 
     expect(fetchCalls.some((c) => c.includes("GET https://api.schift.io/v1/jobs/j1"))).toBe(true);
     expect(fetchCalls.some((c) => c.includes("POST https://api.schift.io/v1/buckets/b1/search"))).toBe(true);
@@ -306,7 +306,7 @@ describe("deployWithRuntime", () => {
       ),
     ).rejects.toThrow("EXIT:1");
 
-    expect(logs.join("\n")).toContain('Run "scloud auth login" first');
+    expect(logs.join("\n")).toContain('Run "schift auth login" first');
   });
 
   it("ignores .gitkeep and uploads nested files", async () => {

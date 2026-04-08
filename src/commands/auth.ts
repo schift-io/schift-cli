@@ -256,7 +256,7 @@ export function status() {
     console.log(`  Authenticated via ~/.schift/config.json (${preview})\n`);
   } else {
     console.log(
-      `  Not authenticated. Run "scloud auth login" to get started.\n`,
+      `  Not authenticated. Run "schift auth login" to get started.\n`,
     );
   }
 }

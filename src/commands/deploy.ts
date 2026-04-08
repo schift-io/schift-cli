@@ -115,13 +115,13 @@ async function apiRequest(
 ): Promise<any> {
   const apiKey = resolveApiKey(runtime);
   if (!apiKey) {
-    throw new Error('Not authenticated. Run "scloud auth login" first.');
+    throw new Error('Not authenticated. Run "schift auth login" first.');
   }
 
   const url = `${runtime.getApiUrl()}${apiPath}`;
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
-    "User-Agent": "scloud-cli/0.1.0",
+    "User-Agent": "schift-cli/0.1.0",
   };
   const init: RequestInit = { method, headers };
 
@@ -142,7 +142,7 @@ async function apiRequest(
 async function uploadFile(runtime: DeployRuntime, bucketId: string, filePath: string): Promise<any> {
   const apiKey = resolveApiKey(runtime);
   if (!apiKey) {
-    throw new Error('Not authenticated. Run "scloud auth login" first.');
+    throw new Error('Not authenticated. Run "schift auth login" first.');
   }
 
   const fileContent = readFileSync(filePath);
@@ -156,7 +156,7 @@ async function uploadFile(runtime: DeployRuntime, bucketId: string, filePath: st
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
-      "User-Agent": "scloud-cli/0.1.0",
+      "User-Agent": "schift-cli/0.1.0",
     },
     body: formData,
   });
@@ -233,7 +233,7 @@ export async function deployWithRuntime(
   const config = loadProjectConfig(runtime.cwd);
 
   if (!resolveApiKey(runtime)) {
-    runtime.log('  Error: Not authenticated. Run "scloud auth login" first.\n');
+    runtime.log('  Error: Not authenticated. Run "schift auth login" first.\n');
     runtime.exit(1);
     return;
   }
@@ -241,7 +241,7 @@ export async function deployWithRuntime(
   const slug = slugify(config.agent.name || config.name);
 
   if (!options.json) {
-    runtime.log("\n  Deploying to Scloud...\n");
+    runtime.log("\n  Deploying to Schift Cloud...\n");
     runtime.log(`  Project: ${config.name}`);
     runtime.log("\n  Stage 1/6: Ensure Agent/Bucket");
   }
@@ -351,7 +351,7 @@ export async function deployWithRuntime(
   runtime.log(`  curl -X POST ${trialEndpoint} \\\n    -H \"Authorization: Bearer $SCHIFT_API_KEY\" \\\n    -H \"Content-Type: application/json\" \\\n    -d '{\"bucket\": \"${agent.bucket_name}\", \"message\": \"Say hello from Schift in one short sentence.\"}'\n`);
   runtime.log("  This is a one-time onboarding trial. For ongoing usage, configure your own provider.");
   runtime.log("  Configure BYOK:");
-  runtime.log("  scloud providers set anthropic");
+  runtime.log("  schift providers set anthropic");
 }
 
 /* v8 ignore start */

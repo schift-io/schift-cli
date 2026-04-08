@@ -4,7 +4,6 @@
   "description": "Schift CLI - Deploy and manage AI agents",
   "type": "module",
   "bin": {
-    "scloud": "./dist/index.js",
     "schift": "./dist/index.js"
   },
   "files": [
@@ -16,7 +15,6 @@
     "test": "vitest run"
   },
   "keywords": [
-    "scloud",
     "schift",
     "ai-agent",
     "cli",
