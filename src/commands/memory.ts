@@ -137,20 +137,54 @@ export async function search(argv: string[]) {
   }
 
   try {
-    const result = await api(auth, "/v1/query", {
-      query, collection: "localbucket", top_k: 5,
+    type Hit = { metadata?: Record<string, string>; score?: number; text?: string; content?: string };
+    const queryBody = {
+      query, top_k: 5,
       ...(domain ? { filter: { domain } } : {}),
-    }) as { results?: Array<{ metadata?: Record<string, string>; score?: number; text?: string; content?: string }> };
+    };
 
-    const hits = result.results || [];
+    // Personal search
+    const personalResult = await api(auth, "/v1/query", {
+      ...queryBody, collection: "localbucket",
+    }) as { results?: Hit[] };
+    const personalHits = (personalResult.results || []).map((h) => ({
+      ...h, metadata: { ...h.metadata, source: "personal" },
+    }));
+
+    // Team search (authenticated users)
+    let teamHits: Hit[] = [];
+    try {
+      const teamResult = await api(auth, "/v1/query", {
+        ...queryBody, collection: "teambucket",
+      }) as { results?: Hit[] };
+      teamHits = (teamResult.results || []).map((h) => ({
+        ...h, metadata: { ...h.metadata, source: "team" },
+      }));
+    } catch {
+      // team search is best-effort
+    }
+
+    // Merge, deduplicate by text, sort by score
+    const merged = [...personalHits, ...teamHits];
+    const seen = new Set<string>();
+    const hits = merged.filter((h) => {
+      const key = (h.text || h.content || "").trim();
+      if (!key || !seen.has(key)) {
+        if (key) seen.add(key);
+        return true;
+      }
+      return false;
+    }).sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, 5);
+
     if (!hits.length) { console.log("  No results."); return; }
     console.log(`  ${hits.length} result(s):\n`);
     for (const h of hits) {
       const m = h.metadata || {};
+      const src = m.source === "team" ? "[team]" : "[personal]";
       const title = m.title || m.session_id || m.topic || "untitled";
       const score = h.score != null ? ` (${(h.score * 100).toFixed(0)}%)` : "";
       const snippet = (h.text || h.content || m.summary || "").slice(0, 120);
-      console.log(`  [${m.domain || "?"}] ${title}${score}`);
+      console.log(`  ${src} [${m.domain || "?"}] ${title}${score}`);
       if (snippet) console.log(`  ${snippet}...\n`);
     }
   } catch (e) {
