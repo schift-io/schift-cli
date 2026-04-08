@@ -28,7 +28,7 @@ export async function setProviderWithRuntime(
 ): Promise<void> {
   const apiKey = runtime.getApiKey();
   if (!apiKey) {
-    throw new Error('Not authenticated. Run "schift auth login" first.');
+    throw new Error('Not authenticated. Run "scloud auth login" first.');
   }
 
   const body: Record<string, string> = { api_key: input.apiKey };
@@ -41,7 +41,7 @@ export async function setProviderWithRuntime(
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
-      "User-Agent": "schift-cli/0.1.0",
+      "User-Agent": "scloud-cli/0.1.0",
     },
     body: JSON.stringify(body),
   });
@@ -60,7 +60,7 @@ export async function providers(argv: string[] = []): Promise<void> {
   const provider = argv[1];
 
   if (subcommand !== "set" || !provider) {
-    console.log('  Usage: schift providers set <openai|google|anthropic>\n');
+    console.log('  Usage: scloud providers set <openai|google|anthropic>\n');
     return;
   }
 

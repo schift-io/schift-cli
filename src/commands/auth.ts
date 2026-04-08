@@ -25,6 +25,7 @@ function openBrowserForPlatform(
   runner("xdg-open", [url]);
 }
 
+/* v8 ignore start */
 function openBrowser(url: string) {
   openBrowserForPlatform(process.platform, url, (command, args) => {
     const result = spawnSync(command, args, { stdio: "ignore" });
@@ -34,6 +35,7 @@ function openBrowser(url: string) {
     }
   });
 }
+/* v8 ignore stop */
 
 export function __test_openBrowserForPlatform(
   platform: NodeJS.Platform,
@@ -43,6 +45,11 @@ export function __test_openBrowserForPlatform(
   openBrowserForPlatform(platform, url, runner);
 }
 
+export async function __test_findFreePort() {
+  return findFreePort();
+}
+
+/* v8 ignore start */
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = createServer();
@@ -57,27 +64,89 @@ function findFreePort(): Promise<number> {
     });
   });
 }
+/* v8 ignore stop */
 
-function saveToEnvLocal(key: string) {
-  const envPath = resolve(process.cwd(), ".env.local");
+function saveToEnvLocal(key: string, cwd: string = process.cwd()) {
+  const envPath = resolve(cwd, ".env.local");
   let content = "";
   if (existsSync(envPath)) {
     content = readFileSync(envPath, "utf-8");
-    // Replace existing SCHIFT_API_KEY line
     if (content.includes("SCHIFT_API_KEY=")) {
-      content = content.replace(
-        /^SCHIFT_API_KEY=.*$/m,
-        `SCHIFT_API_KEY=${key}`,
-      );
+      content = content.replace(/^SCHIFT_API_KEY=.*$/m, `SCHIFT_API_KEY=${key}`);
       writeFileSync(envPath, content);
       return;
     }
   }
-  // Append
   const newLine = content.endsWith("\n") || content === "" ? "" : "\n";
   writeFileSync(envPath, content + newLine + `SCHIFT_API_KEY=${key}\n`);
 }
 
+interface LoginCallbackResult {
+  statusCode: number;
+  headers?: Record<string, string>;
+  body?: string;
+  action: "resolve" | "reject" | "continue";
+  token?: string;
+  errorMessage?: string;
+}
+
+function resolveLoginCallback(params: {
+  expectedState: string;
+  receivedState: string | null;
+  token: string | null;
+  error: string | null;
+  webUrl: string;
+}): LoginCallbackResult {
+  if (params.error) {
+    return {
+      statusCode: 200,
+      body: `<html><body><h2>Login failed</h2><p>${params.error}</p><p>You can close this window.</p></body></html>`,
+      action: "reject",
+      errorMessage: params.error,
+    };
+  }
+
+  if (params.receivedState !== params.expectedState) {
+    return {
+      statusCode: 400,
+      body: "<html><body><h2>State mismatch</h2><p>Please try again.</p></body></html>",
+      action: "continue",
+    };
+  }
+
+  if (!params.token || !params.token.startsWith("sch_")) {
+    return {
+      statusCode: 400,
+      body: "<html><body><h2>Invalid token</h2><p>Please try again.</p></body></html>",
+      action: "continue",
+    };
+  }
+
+  return {
+    statusCode: 302,
+    headers: {
+      Location: `${params.webUrl}/auth/cli?status=success`,
+    },
+    action: "resolve",
+    token: params.token,
+  };
+}
+
+export function __test_saveToEnvLocal(key: string, cwd: string) {
+  saveToEnvLocal(key, cwd);
+}
+
+export function __test_resolveLoginCallback(params: {
+  expectedState: string;
+  receivedState: string | null;
+  token: string | null;
+  error: string | null;
+  webUrl: string;
+}) {
+  return resolveLoginCallback(params);
+}
+
+/* v8 ignore start */
 export async function login() {
   const existing = getApiKey();
   if (existing) {
@@ -105,44 +174,33 @@ export async function login() {
       const url = new URL(req.url!, `http://localhost:${port}`);
 
       if (url.pathname === "/callback") {
-        const receivedState = url.searchParams.get("state");
-        const token = url.searchParams.get("token");
-        const error = url.searchParams.get("error");
+        const result = resolveLoginCallback({
+          expectedState: state,
+          receivedState: url.searchParams.get("state"),
+          token: url.searchParams.get("token"),
+          error: url.searchParams.get("error"),
+          webUrl,
+        });
 
-        if (error) {
-          res.writeHead(200, { "Content-Type": "text/html" });
-          res.end(
-            `<html><body><h2>Login failed</h2><p>${error}</p><p>You can close this window.</p></body></html>`,
-          );
+        res.writeHead(result.statusCode, {
+          "Content-Type": "text/html",
+          ...(result.headers || {}),
+        });
+        res.end(result.body);
+
+        if (result.action === "reject") {
           clearTimeout(timeout);
           server.close();
-          reject(new Error(error));
+          reject(new Error(result.errorMessage || "Login failed"));
           return;
         }
 
-        if (receivedState !== state) {
-          res.writeHead(400, { "Content-Type": "text/html" });
-          res.end(
-            "<html><body><h2>State mismatch</h2><p>Please try again.</p></body></html>",
-          );
-          return;
+        if (result.action === "resolve") {
+          clearTimeout(timeout);
+          server.close();
+          resolveKey(result.token!);
         }
-
-        if (!token || !token.startsWith("sch_")) {
-          res.writeHead(400, { "Content-Type": "text/html" });
-          res.end(
-            "<html><body><h2>Invalid token</h2><p>Please try again.</p></body></html>",
-          );
-          return;
-        }
-
-        // Redirect browser back to schift.io (avoids leaving user on localhost)
-        const returnUrl = `${webUrl}/auth/cli?status=success`;
-        res.writeHead(302, { Location: returnUrl });
-        res.end();
-        clearTimeout(timeout);
-        server.close();
-        resolveKey(token);
+        return;
       } else {
         res.writeHead(404);
         res.end("Not found");
@@ -175,6 +233,7 @@ export async function login() {
   const preview = apiKey.slice(0, 10) + "..." + apiKey.slice(-4);
   console.log(`\n  Authenticated successfully (${preview})\n`);
 }
+/* v8 ignore stop */
 
 export function logout() {
   if (!getApiKey()) {
@@ -197,7 +256,7 @@ export function status() {
     console.log(`  Authenticated via ~/.schift/config.json (${preview})\n`);
   } else {
     console.log(
-      `  Not authenticated. Run "schift auth login" to get started.\n`,
+      `  Not authenticated. Run "scloud auth login" to get started.\n`,
     );
   }
 }

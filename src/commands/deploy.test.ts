@@ -142,7 +142,7 @@ describe("deployWithRuntime", () => {
     expect(output).toContain("support-bot-docs");
     expect(output).toContain("/v1/trial/chat");
     expect(output).toContain("Configure BYOK");
-    expect(output).toContain("schift providers set anthropic");
+    expect(output).toContain("scloud providers set anthropic");
 
     expect(fetchCalls.some((c) => c.includes("GET https://api.schift.io/v1/jobs/j1"))).toBe(true);
     expect(fetchCalls.some((c) => c.includes("POST https://api.schift.io/v1/buckets/b1/search"))).toBe(true);
@@ -231,6 +231,569 @@ describe("deployWithRuntime", () => {
       jobs: 1,
       smokeOk: false,
     });
+  });
+
+  it("throws when schift.config.json is missing", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "schift-deploy-test-"));
+
+    const runtime = {
+      cwd: tmp,
+      getApiKey: () => "sch_test123456789012345",
+      getApiUrl: () => "https://api.schift.io",
+      log: () => undefined,
+      write: () => undefined,
+      exit: (code: number) => {
+        throw new Error(`EXIT:${code}`);
+      },
+      sleep: async () => undefined,
+      fetch: async () => new Response("not found", { status: 404 }),
+    };
+
+    await expect(
+      deployWithRuntime(
+        {
+          waitForProcessing: false,
+          smoke: false,
+          json: false,
+        },
+        runtime,
+      ),
+    ).rejects.toThrow("schift.config.json not found");
+  });
+
+  it("exits with auth hint when no api key is available", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "schift-deploy-test-"));
+    fs.writeFileSync(
+      path.join(tmp, "schift.config.json"),
+      JSON.stringify(
+        {
+          name: "support-bot",
+          template: "cs-chatbot",
+          agent: {
+            name: "support-bot",
+            model: "gpt-4o-mini",
+            instructions: "helpful",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+
+    const logs: string[] = [];
+    const runtime = {
+      cwd: tmp,
+      getApiKey: () => null,
+      getApiUrl: () => "https://api.schift.io",
+      log: (msg: string) => logs.push(msg),
+      write: () => undefined,
+      exit: (code: number) => {
+        throw new Error(`EXIT:${code}`);
+      },
+      sleep: async () => undefined,
+      fetch: async () => new Response("not found", { status: 404 }),
+    };
+
+    await expect(
+      deployWithRuntime(
+        {
+          waitForProcessing: false,
+          smoke: false,
+          json: false,
+        },
+        runtime,
+      ),
+    ).rejects.toThrow("EXIT:1");
+
+    expect(logs.join("\n")).toContain('Run "scloud auth login" first');
+  });
+
+  it("ignores .gitkeep and uploads nested files", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "schift-deploy-test-"));
+    fs.writeFileSync(
+      path.join(tmp, "schift.config.json"),
+      JSON.stringify(
+        {
+          name: "support-bot",
+          template: "cs-chatbot",
+          agent: {
+            name: "support-bot",
+            model: "gpt-4o-mini",
+            instructions: "helpful",
+          },
+          rag: {
+            bucket: "support-bot-docs",
+            dataDir: "./data",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmp, "data", "nested"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "data", ".gitkeep"), "", "utf-8");
+    fs.writeFileSync(path.join(tmp, "data", "nested", "faq.md"), "hello", "utf-8");
+
+    const uploadTargets: string[] = [];
+    const logs: string[] = [];
+    const runtime = {
+      cwd: tmp,
+      getApiKey: () => "sch_test123456789012345",
+      getApiUrl: () => "https://api.schift.io",
+      log: (msg: string) => logs.push(msg),
+      write: () => undefined,
+      exit: (code: number) => {
+        throw new Error(`EXIT:${code}`);
+      },
+      sleep: async () => undefined,
+      fetch: async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/v1/agents/support-bot") && init?.method === "PUT") {
+          return new Response(
+            JSON.stringify({
+              agent_id: "a1",
+              slug: "support-bot",
+              bucket_id: "b1",
+              bucket_name: "support-bot-docs",
+              endpoint: "/v1/agents/support-bot/query",
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.endsWith("/v1/buckets/b1/upload") && init?.method === "POST") {
+          uploadTargets.push(url);
+          return new Response(JSON.stringify({ jobs: [] }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      },
+    };
+
+    await deployWithRuntime(
+      {
+        waitForProcessing: false,
+        smoke: false,
+        json: false,
+      },
+      runtime,
+    );
+
+    expect(uploadTargets).toHaveLength(1);
+    expect(logs.join("\n")).toContain("nested/faq.md");
+    expect(logs.join("\n")).not.toContain(".gitkeep");
+  });
+
+  it("logs no data files found for empty data dir", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "schift-deploy-test-"));
+    fs.writeFileSync(
+      path.join(tmp, "schift.config.json"),
+      JSON.stringify(
+        {
+          name: "support-bot",
+          template: "cs-chatbot",
+          agent: {
+            name: "support-bot",
+            model: "gpt-4o-mini",
+            instructions: "helpful",
+          },
+          rag: {
+            bucket: "support-bot-docs",
+            dataDir: "./data",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmp, "data"), { recursive: true });
+
+    const logs: string[] = [];
+    const runtime = {
+      cwd: tmp,
+      getApiKey: () => "sch_test123456789012345",
+      getApiUrl: () => "https://api.schift.io",
+      log: (msg: string) => logs.push(msg),
+      write: () => undefined,
+      exit: (code: number) => {
+        throw new Error(`EXIT:${code}`);
+      },
+      sleep: async () => undefined,
+      fetch: async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/v1/agents/support-bot") && init?.method === "PUT") {
+          return new Response(
+            JSON.stringify({
+              agent_id: "a1",
+              slug: "support-bot",
+              bucket_id: "b1",
+              bucket_name: "support-bot-docs",
+              endpoint: "/v1/agents/support-bot/query",
+            }),
+            { status: 200 },
+          );
+        }
+        return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      },
+    };
+
+    await deployWithRuntime(
+      {
+        waitForProcessing: false,
+        smoke: false,
+        json: false,
+      },
+      runtime,
+    );
+
+    expect(logs.join("\n")).toContain("No data files found in ./data");
+  });
+
+  it("throws when upload fails", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "schift-deploy-test-"));
+    fs.writeFileSync(
+      path.join(tmp, "schift.config.json"),
+      JSON.stringify(
+        {
+          name: "support-bot",
+          agent: {
+            name: "support-bot",
+            model: "gpt-4o-mini",
+            instructions: "helpful",
+          },
+          rag: {
+            bucket: "support-bot-docs",
+            dataDir: "./data",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmp, "data"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "data", "faq.md"), "hello", "utf-8");
+
+    const runtime = {
+      cwd: tmp,
+      getApiKey: () => "sch_test123456789012345",
+      getApiUrl: () => "https://api.schift.io",
+      log: () => undefined,
+      write: () => undefined,
+      exit: (code: number) => {
+        throw new Error(`EXIT:${code}`);
+      },
+      sleep: async () => undefined,
+      fetch: async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/v1/agents/support-bot") && init?.method === "PUT") {
+          return new Response(
+            JSON.stringify({
+              agent_id: "a1",
+              slug: "support-bot",
+              bucket_id: "b1",
+              bucket_name: "support-bot-docs",
+              endpoint: "/v1/agents/support-bot/query",
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.endsWith("/v1/buckets/b1/upload") && init?.method === "POST") {
+          return new Response("bucket exploded", { status: 500 });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    };
+
+    await expect(
+      deployWithRuntime(
+        {
+          waitForProcessing: true,
+          smoke: true,
+          json: false,
+        },
+        runtime,
+      ),
+    ).rejects.toThrow("Upload failed for faq.md: 500 bucket exploded");
+  });
+
+  it("throws when processing job fails", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "schift-deploy-test-"));
+    fs.writeFileSync(
+      path.join(tmp, "schift.config.json"),
+      JSON.stringify(
+        {
+          name: "support-bot",
+          agent: {
+            name: "support-bot",
+            model: "gpt-4o-mini",
+            instructions: "helpful",
+          },
+          rag: {
+            bucket: "support-bot-docs",
+            dataDir: "./data",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmp, "data"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "data", "faq.md"), "hello", "utf-8");
+
+    const runtime = {
+      cwd: tmp,
+      getApiKey: () => "sch_test123456789012345",
+      getApiUrl: () => "https://api.schift.io",
+      log: () => undefined,
+      write: () => undefined,
+      exit: (code: number) => {
+        throw new Error(`EXIT:${code}`);
+      },
+      sleep: async () => undefined,
+      fetch: async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/v1/agents/support-bot") && init?.method === "PUT") {
+          return new Response(
+            JSON.stringify({
+              agent_id: "a1",
+              slug: "support-bot",
+              bucket_id: "b1",
+              bucket_name: "support-bot-docs",
+              endpoint: "/v1/agents/support-bot/query",
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.endsWith("/v1/buckets/b1/upload") && init?.method === "POST") {
+          return new Response(JSON.stringify({ jobs: [{ job_id: "j1" }] }), { status: 200 });
+        }
+        if (url.endsWith("/v1/jobs/j1") && init?.method === "GET") {
+          return new Response(JSON.stringify({ job_id: "j1", status: "failed" }), { status: 200 });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    };
+
+    await expect(
+      deployWithRuntime(
+        {
+          waitForProcessing: true,
+          smoke: false,
+          json: false,
+        },
+        runtime,
+      ),
+    ).rejects.toThrow("Processing failed for j1: failed");
+  });
+
+  it("throws when processing job times out", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "schift-deploy-test-"));
+    fs.writeFileSync(
+      path.join(tmp, "schift.config.json"),
+      JSON.stringify(
+        {
+          name: "support-bot",
+          agent: {
+            name: "support-bot",
+            model: "gpt-4o-mini",
+            instructions: "helpful",
+          },
+          rag: {
+            bucket: "support-bot-docs",
+            dataDir: "./data",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmp, "data"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "data", "faq.md"), "hello", "utf-8");
+
+    let sleepCalls = 0;
+    const runtime = {
+      cwd: tmp,
+      getApiKey: () => "sch_test123456789012345",
+      getApiUrl: () => "https://api.schift.io",
+      log: () => undefined,
+      write: () => undefined,
+      exit: (code: number) => {
+        throw new Error(`EXIT:${code}`);
+      },
+      sleep: async () => {
+        sleepCalls += 1;
+      },
+      fetch: async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/v1/agents/support-bot") && init?.method === "PUT") {
+          return new Response(
+            JSON.stringify({
+              agent_id: "a1",
+              slug: "support-bot",
+              bucket_id: "b1",
+              bucket_name: "support-bot-docs",
+              endpoint: "/v1/agents/support-bot/query",
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.endsWith("/v1/buckets/b1/upload") && init?.method === "POST") {
+          return new Response(JSON.stringify({ jobs: [{ job_id: "j1" }] }), { status: 200 });
+        }
+        if (url.endsWith("/v1/jobs/j1") && init?.method === "GET") {
+          return new Response(JSON.stringify({ job_id: "j1", status: "processing" }), {
+            status: 200,
+          });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    };
+
+    await expect(
+      deployWithRuntime(
+        {
+          waitForProcessing: true,
+          smoke: false,
+          json: false,
+        },
+        runtime,
+      ),
+    ).rejects.toThrow("Processing timed out for j1");
+    expect(sleepCalls).toBe(120);
+  });
+
+  it("logs smoke search failure and still succeeds", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "schift-deploy-test-"));
+    fs.writeFileSync(
+      path.join(tmp, "schift.config.json"),
+      JSON.stringify(
+        {
+          name: "support-bot",
+          agent: {
+            name: "support-bot",
+            model: "gpt-4o-mini",
+            instructions: "helpful",
+          },
+          rag: {
+            bucket: "support-bot-docs",
+            dataDir: "./data",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmp, "data"), { recursive: true });
+
+    const logs: string[] = [];
+    const runtime = {
+      cwd: tmp,
+      getApiKey: () => "sch_test123456789012345",
+      getApiUrl: () => "https://api.schift.io",
+      log: (msg: string) => logs.push(msg),
+      write: () => undefined,
+      exit: (code: number) => {
+        throw new Error(`EXIT:${code}`);
+      },
+      sleep: async () => undefined,
+      fetch: async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/v1/agents/support-bot") && init?.method === "PUT") {
+          return new Response(
+            JSON.stringify({
+              agent_id: "a1",
+              slug: "support-bot",
+              bucket_id: "b1",
+              bucket_name: "support-bot-docs",
+              endpoint: "/v1/agents/support-bot/query",
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.endsWith("/v1/buckets/b1/search") && init?.method === "POST") {
+          return new Response("search failed", { status: 500 });
+        }
+        return new Response(JSON.stringify({ jobs: [] }), { status: 200 });
+      },
+    };
+
+    await deployWithRuntime(
+      {
+        waitForProcessing: false,
+        smoke: true,
+        json: false,
+      },
+      runtime,
+    );
+
+    expect(logs.join("\n")).toContain("Smoke search: failed (API error 500: search failed)");
+    expect(logs.join("\n")).toContain("Deployed successfully!");
+  });
+
+  it("logs smoke search no results when response is malformed", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "schift-deploy-test-"));
+    fs.writeFileSync(
+      path.join(tmp, "schift.config.json"),
+      JSON.stringify(
+        {
+          name: "support-bot",
+          agent: {
+            name: "support-bot",
+            model: "gpt-4o-mini",
+            instructions: "helpful",
+          },
+          rag: {
+            bucket: "support-bot-docs",
+            dataDir: "./data",
+          },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+    fs.mkdirSync(path.join(tmp, "data"), { recursive: true });
+
+    const logs: string[] = [];
+    const runtime = {
+      cwd: tmp,
+      getApiKey: () => "sch_test123456789012345",
+      getApiUrl: () => "https://api.schift.io",
+      log: (msg: string) => logs.push(msg),
+      write: () => undefined,
+      exit: (code: number) => {
+        throw new Error(`EXIT:${code}`);
+      },
+      sleep: async () => undefined,
+      fetch: async (url: string, init?: RequestInit) => {
+        if (url.endsWith("/v1/agents/support-bot") && init?.method === "PUT") {
+          return new Response(
+            JSON.stringify({
+              agent_id: "a1",
+              slug: "support-bot",
+              bucket_id: "b1",
+              bucket_name: "support-bot-docs",
+              endpoint: "/v1/agents/support-bot/query",
+            }),
+            { status: 200 },
+          );
+        }
+        if (url.endsWith("/v1/buckets/b1/search") && init?.method === "POST") {
+          return new Response(JSON.stringify({ nope: true }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ jobs: [] }), { status: 200 });
+      },
+    };
+
+    await deployWithRuntime(
+      {
+        waitForProcessing: false,
+        smoke: true,
+        json: false,
+      },
+      runtime,
+    );
+
+    expect(logs.join("\n")).toContain("Smoke search: no results");
   });
 
   it("skips job wait and smoke when flags are disabled", async () => {
