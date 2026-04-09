@@ -76,13 +76,13 @@ function slugify(name: string): string {
 }
 
 function isTerminalJobStatus(status: string): boolean {
-  return ["completed", "succeeded", "done", "failed", "error", "cancelled"].includes(
+  return ["completed", "succeeded", "done", "ready", "failed", "error", "cancelled"].includes(
     status.toLowerCase(),
   );
 }
 
 function isSuccessJobStatus(status: string): boolean {
-  return ["completed", "succeeded", "done"].includes(status.toLowerCase());
+  return ["completed", "succeeded", "done", "ready"].includes(status.toLowerCase());
 }
 
 export function parseDeployOptions(argv: string[] = []): DeployOptions {
@@ -252,6 +252,43 @@ export async function deployWithRuntime(
       description: config.agent.instructions || "",
     });
 
+  // Register as Managed Agent (new API) for /v1/agents/{id}/runs support
+  let managedAgentId: string | null = null;
+  try {
+    const managedAgent = await apiRequest(runtime, "POST", `/v1/agents`, {
+      name: slug,
+      model: config.agent.model || "gemini-2.5-flash-lite",
+      instructions: config.agent.instructions || "",
+      rag_config: { bucket_id: agent.bucket_id, top_k: 5 },
+    });
+    managedAgentId = managedAgent.id;
+  } catch (err) {
+    // 409 = already exists, fetch existing
+    const errMsg = String((err as Error).message || "");
+    if (errMsg.includes("409") || errMsg.includes("already exists")) {
+      try {
+        const agents = await apiRequest(runtime, "GET", `/v1/agents`);
+        const existing = (agents as any[]).find((a: any) => a.name === slug);
+        if (existing) {
+          managedAgentId = existing.id;
+          await apiRequest(runtime, "PATCH", `/v1/agents/${existing.id}`, {
+            model: config.agent.model || "gemini-2.5-flash-lite",
+            instructions: config.agent.instructions || "",
+            rag_config: { bucket_id: agent.bucket_id, top_k: 5 },
+          });
+        }
+      } catch (innerErr) {
+        if (!options.json) {
+          runtime.log(`  (Managed Agent update skipped: ${(innerErr as Error).message})`);
+        }
+      }
+    }
+  }
+
+  if (!options.json && managedAgentId) {
+    runtime.log(`  Managed Agent: ${managedAgentId}`);
+  }
+
   const dataDir = config.rag ? resolve(runtime.cwd, config.rag.dataDir || "./data") : null;
   const files = dataDir ? collectDataFiles(dataDir) : [];
   const allJobIds: string[] = [];
@@ -326,9 +363,11 @@ export async function deployWithRuntime(
   const summary = {
     agentId: agent.agent_id,
     agentName: config.agent.name,
+    managedAgentId: managedAgentId || undefined,
     bucketId: agent.bucket_id,
     bucketName: agent.bucket_name,
     endpoint: agentEndpoint,
+    managedAgentEndpoint: managedAgentId ? `${apiUrl}/v1/agents/${managedAgentId}/runs` : undefined,
     webhook: "Configure webhook in Schift dashboard",
     filesUploaded: files.length,
     jobs: allJobIds.length,
@@ -349,7 +388,11 @@ export async function deployWithRuntime(
   runtime.log(`  curl -X POST ${agentEndpoint} \\\n    -H \"Authorization: Bearer $SCHIFT_API_KEY\" \\\n    -H \"Content-Type: application/json\" \\\n    -d '{\"query\": \"What can you help me with?\", \"top_k\": 5}'\n`);
   runtime.log(`  Trial chat now (bucket: ${agent.bucket_name}):`);
   runtime.log(`  curl -X POST ${trialEndpoint} \\\n    -H \"Authorization: Bearer $SCHIFT_API_KEY\" \\\n    -H \"Content-Type: application/json\" \\\n    -d '{\"bucket\": \"${agent.bucket_name}\", \"message\": \"Say hello from Schift in one short sentence.\"}'\n`);
-  runtime.log("  This is a one-time onboarding trial. For ongoing usage, configure your own provider.");
+  if (managedAgentId) {
+    const runEndpoint = `${apiUrl}/v1/agents/${managedAgentId}/runs`;
+    runtime.log("  Run agent (Managed Agent API):");
+    runtime.log(`  curl -X POST ${runEndpoint} \\\n    -H "Authorization: Bearer $SCHIFT_API_KEY" \\\n    -H "Content-Type: application/json" \\\n    -d '{"message": "What can you help me with?"}'\n`);
+  }
   runtime.log("  Configure BYOK:");
   runtime.log("  schift providers set anthropic");
 }
