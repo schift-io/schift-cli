@@ -4,7 +4,9 @@ import { providers } from "./commands/providers.js";
 import { agent } from "./commands/agent.js";
 import { remember, search, ask, ingest } from "./commands/memory.js";
 
-export const VERSION = "0.1.0";
+declare const __SCHIFT_VERSION__: string;
+
+export const VERSION = __SCHIFT_VERSION__;
 
 export interface CliRuntime {
   log: (message: string) => void;
