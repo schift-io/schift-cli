@@ -123,7 +123,11 @@ async function apiRequest(
     Authorization: `Bearer ${apiKey}`,
     "User-Agent": "schift-cli/0.1.0",
   };
-  const init: RequestInit = { method, headers };
+  const init: RequestInit = {
+    method,
+    headers,
+    signal: AbortSignal.timeout(60_000),
+  };
 
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
