@@ -13,6 +13,11 @@ function createRuntime(): CliRuntime {
     status: vi.fn(),
     deploy: vi.fn(),
     providers: vi.fn(),
+    agent: vi.fn(),
+    remember: vi.fn(),
+    search: vi.fn(),
+    ask: vi.fn(),
+    ingest: vi.fn(),
   };
 }
 
@@ -25,6 +30,7 @@ describe("printHelp", () => {
     expect(logs[0]).toContain("Usage: schift <command>");
     expect(logs[0]).toContain("auth login");
     expect(logs[0]).toContain("providers set");
+    expect(logs[0]).toContain("agent call");
   });
 });
 
@@ -64,17 +70,21 @@ describe("runCli", () => {
     const runtime = createRuntime();
     await runCli(["auth", "wat"], runtime);
 
-    expect(runtime.log).toHaveBeenCalledWith('  Usage: schift auth <login|logout|status>\n');
+    expect(runtime.log).toHaveBeenCalledWith(
+      "  Usage: schift auth <login|logout|status>\n",
+    );
   });
 
-  it("dispatches deploy and providers with sliced args", async () => {
+  it("dispatches deploy, providers, and agent with sliced args", async () => {
     const runtime = createRuntime();
 
     await runCli(["deploy", "--json"], runtime);
     await runCli(["providers", "set", "anthropic"], runtime);
+    await runCli(["agent", "call", "a1", "hello"], runtime);
 
     expect(runtime.deploy).toHaveBeenCalledWith(["--json"]);
     expect(runtime.providers).toHaveBeenCalledWith(["set", "anthropic"]);
+    expect(runtime.agent).toHaveBeenCalledWith(["call", "a1", "hello"]);
   });
 
   it("prints unknown command, help, and exits 1", async () => {
@@ -94,7 +104,7 @@ describe("main", () => {
   });
 
   it("prints formatted error and exits 1 on thrown command error", async () => {
-    const runtime = {
+    const runtime: CliRuntime = {
       log: vi.fn(),
       error: vi.fn(),
       exit: vi.fn((code: number) => {
@@ -107,6 +117,11 @@ describe("main", () => {
         throw new Error("boom");
       }),
       providers: vi.fn(),
+      agent: vi.fn(),
+      remember: vi.fn(),
+      search: vi.fn(),
+      ask: vi.fn(),
+      ingest: vi.fn(),
     };
 
     await expect(main(["deploy"], runtime)).rejects.toThrow("EXIT:1");

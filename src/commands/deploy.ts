@@ -472,12 +472,15 @@ export async function deployWithRuntime(
 
   runtime.log("\n  Stage 6/6: Final usage");
   runtime.log("\n  Deployed successfully!\n");
-  runtime.log(`  Agent URL: ${agentEndpoint}`);
+  runtime.log(`  Agent ID: ${agent.agent_id}`);
+  runtime.log(`  Query URL: ${agentEndpoint}`);
   runtime.log("  Webhook URL: Configure webhook in Schift dashboard");
-  runtime.log("\n  Search now:");
+  runtime.log("\n  Try it with curl:");
   runtime.log(
     `  curl -X POST ${agentEndpoint} \\\n    -H \"Authorization: Bearer $SCHIFT_API_KEY\" \\\n    -H \"Content-Type: application/json\" \\\n    -d '{\"query\": \"What can you help me with?\", \"top_k\": 5}'\n`,
   );
+  runtime.log("  Or with Schift CLI:");
+  runtime.log(`  ${summary.cliCall}\n`);
   runtime.log(`  Trial chat now (bucket: ${agent.bucket_name}):`);
   runtime.log(
     `  curl -X POST ${trialEndpoint} \\\n    -H \"Authorization: Bearer $SCHIFT_API_KEY\" \\\n    -H \"Content-Type: application/json\" \\\n    -d '{\"bucket\": \"${agent.bucket_name}\", \"message\": \"Say hello from Schift in one short sentence.\"}'\n`,

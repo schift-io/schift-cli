@@ -136,16 +136,31 @@ describe("deployWithRuntime", () => {
     expect(output).toContain("Stage 5/6");
     expect(output).toContain("Stage 6/6");
     expect(output).toContain("Source provenance");
+    expect(output).toContain("Agent ID: a1");
+    expect(output).toContain(
+      "Query URL: https://api.schift.io/v1/agents/support-bot/query",
+    );
     expect(output).toContain("Webhook URL");
-    expect(output).toContain("Search now");
+    expect(output).toContain("Try it with curl");
+    expect(output).toContain(
+      'schift agent call a1 "What can you help me with?"',
+    );
     expect(output).toContain("Trial chat now");
     expect(output).toContain("support-bot-docs");
     expect(output).toContain("/v1/trial/chat");
     expect(output).toContain("Configure BYOK");
     expect(output).toContain("schift providers set anthropic");
 
-    expect(fetchCalls.some((c) => c.includes("GET https://api.schift.io/v1/jobs/j1"))).toBe(true);
-    expect(fetchCalls.some((c) => c.includes("POST https://api.schift.io/v1/buckets/b1/search"))).toBe(true);
+    expect(
+      fetchCalls.some((c) =>
+        c.includes("GET https://api.schift.io/v1/jobs/j1"),
+      ),
+    ).toBe(true);
+    expect(
+      fetchCalls.some((c) =>
+        c.includes("POST https://api.schift.io/v1/buckets/b1/search"),
+      ),
+    ).toBe(true);
   });
 
   it("prints stable JSON schema with --json", async () => {
@@ -202,7 +217,9 @@ describe("deployWithRuntime", () => {
         }
 
         if (url.endsWith("/v1/buckets/b1/upload") && init?.method === "POST") {
-          return new Response(JSON.stringify({ jobs: [{ job_id: "j1" }] }), { status: 200 });
+          return new Response(JSON.stringify({ jobs: [{ job_id: "j1" }] }), {
+            status: 200,
+          });
         }
 
         return new Response("not found", { status: 404 });
@@ -226,6 +243,7 @@ describe("deployWithRuntime", () => {
       bucketId: "b1",
       bucketName: "support-bot-docs",
       endpoint: "https://api.schift.io/v1/agents/support-bot/query",
+      cliCall: 'schift agent call a1 "What can you help me with?"',
       webhook: "Configure webhook in Schift dashboard",
       filesUploaded: 1,
       jobs: 1,
@@ -334,7 +352,11 @@ describe("deployWithRuntime", () => {
     );
     fs.mkdirSync(path.join(tmp, "data", "nested"), { recursive: true });
     fs.writeFileSync(path.join(tmp, "data", ".gitkeep"), "", "utf-8");
-    fs.writeFileSync(path.join(tmp, "data", "nested", "faq.md"), "hello", "utf-8");
+    fs.writeFileSync(
+      path.join(tmp, "data", "nested", "faq.md"),
+      "hello",
+      "utf-8",
+    );
 
     const uploadTargets: string[] = [];
     const logs: string[] = [];
@@ -564,10 +586,15 @@ describe("deployWithRuntime", () => {
           );
         }
         if (url.endsWith("/v1/buckets/b1/upload") && init?.method === "POST") {
-          return new Response(JSON.stringify({ jobs: [{ job_id: "j1" }] }), { status: 200 });
+          return new Response(JSON.stringify({ jobs: [{ job_id: "j1" }] }), {
+            status: 200,
+          });
         }
         if (url.endsWith("/v1/jobs/j1") && init?.method === "GET") {
-          return new Response(JSON.stringify({ job_id: "j1", status: "failed" }), { status: 200 });
+          return new Response(
+            JSON.stringify({ job_id: "j1", status: "failed" }),
+            { status: 200 },
+          );
         }
         return new Response("not found", { status: 404 });
       },
@@ -637,12 +664,17 @@ describe("deployWithRuntime", () => {
           );
         }
         if (url.endsWith("/v1/buckets/b1/upload") && init?.method === "POST") {
-          return new Response(JSON.stringify({ jobs: [{ job_id: "j1" }] }), { status: 200 });
-        }
-        if (url.endsWith("/v1/jobs/j1") && init?.method === "GET") {
-          return new Response(JSON.stringify({ job_id: "j1", status: "processing" }), {
+          return new Response(JSON.stringify({ jobs: [{ job_id: "j1" }] }), {
             status: 200,
           });
+        }
+        if (url.endsWith("/v1/jobs/j1") && init?.method === "GET") {
+          return new Response(
+            JSON.stringify({ job_id: "j1", status: "processing" }),
+            {
+              status: 200,
+            },
+          );
         }
         return new Response("not found", { status: 404 });
       },
@@ -725,7 +757,9 @@ describe("deployWithRuntime", () => {
       runtime,
     );
 
-    expect(logs.join("\n")).toContain("Smoke search: failed (API error 500: search failed)");
+    expect(logs.join("\n")).toContain(
+      "Smoke search: failed (API error 500: search failed)",
+    );
     expect(logs.join("\n")).toContain("Deployed successfully!");
   });
 
@@ -852,7 +886,9 @@ describe("deployWithRuntime", () => {
         }
 
         if (url.endsWith("/v1/buckets/b1/upload") && init?.method === "POST") {
-          return new Response(JSON.stringify({ jobs: [{ job_id: "j1" }] }), { status: 200 });
+          return new Response(JSON.stringify({ jobs: [{ job_id: "j1" }] }), {
+            status: 200,
+          });
         }
 
         return new Response("not found", { status: 404 });
@@ -869,7 +905,9 @@ describe("deployWithRuntime", () => {
     );
 
     expect(fetchCalls.some((c) => c.includes("/v1/jobs/j1"))).toBe(false);
-    expect(fetchCalls.some((c) => c.includes("/v1/buckets/b1/search"))).toBe(false);
+    expect(fetchCalls.some((c) => c.includes("/v1/buckets/b1/search"))).toBe(
+      false,
+    );
   });
 
   it("uses SCHIFT_API_KEY from project .env.local when runtime key is missing", async () => {
@@ -891,7 +929,11 @@ describe("deployWithRuntime", () => {
       ),
       "utf-8",
     );
-    fs.writeFileSync(path.join(tmp, ".env.local"), "SCHIFT_API_KEY=sch_from_env_local\n", "utf-8");
+    fs.writeFileSync(
+      path.join(tmp, ".env.local"),
+      "SCHIFT_API_KEY=sch_from_env_local\n",
+      "utf-8",
+    );
 
     const authHeaders: string[] = [];
 
@@ -906,7 +948,11 @@ describe("deployWithRuntime", () => {
       },
       sleep: async () => undefined,
       fetch: async (_url: string, init?: RequestInit) => {
-        authHeaders.push(String((init?.headers as Record<string, string>)?.Authorization || ""));
+        authHeaders.push(
+          String(
+            (init?.headers as Record<string, string>)?.Authorization || "",
+          ),
+        );
         return new Response(
           JSON.stringify({
             agent_id: "a1",
@@ -951,7 +997,11 @@ describe("deployWithRuntime", () => {
       ),
       "utf-8",
     );
-    fs.writeFileSync(path.join(tmp, ".env.local"), "SCHIFT_API_KEY=sch_from_env_local\n", "utf-8");
+    fs.writeFileSync(
+      path.join(tmp, ".env.local"),
+      "SCHIFT_API_KEY=sch_from_env_local\n",
+      "utf-8",
+    );
 
     const authHeaders: string[] = [];
 
@@ -966,7 +1016,11 @@ describe("deployWithRuntime", () => {
       },
       sleep: async () => undefined,
       fetch: async (_url: string, init?: RequestInit) => {
-        authHeaders.push(String((init?.headers as Record<string, string>)?.Authorization || ""));
+        authHeaders.push(
+          String(
+            (init?.headers as Record<string, string>)?.Authorization || "",
+          ),
+        );
         return new Response(
           JSON.stringify({
             agent_id: "a1",
