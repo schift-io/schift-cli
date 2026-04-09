@@ -1,6 +1,7 @@
 import { login, logout, status } from "./commands/auth.js";
 import { deploy } from "./commands/deploy.js";
 import { providers } from "./commands/providers.js";
+import { agent } from "./commands/agent.js";
 import { remember, search, ask, ingest } from "./commands/memory.js";
 
 export const VERSION = "0.1.0";
@@ -14,6 +15,7 @@ export interface CliRuntime {
   status: () => Promise<void> | void;
   deploy: (argv?: string[]) => Promise<void> | void;
   providers: (argv?: string[]) => Promise<void> | void;
+  agent: (argv?: string[]) => Promise<void> | void;
   remember: (argv: string[]) => Promise<void> | void;
   search: (argv: string[]) => Promise<void> | void;
   ask: (argv: string[]) => Promise<void> | void;
@@ -31,6 +33,7 @@ function defaultRuntime(): CliRuntime {
     status,
     deploy,
     providers,
+    agent,
     remember,
     search,
     ask,
@@ -50,6 +53,7 @@ export function printHelp(logger: (message: string) => void = console.log) {
     auth logout    Remove stored API key
     auth status    Show authentication status
     deploy         Deploy agent to Schift (upload data, create bucket)
+    agent call     Call a deployed agent query endpoint
     providers set  Configure org-level LLM provider access
 
   Second Brain:
@@ -64,7 +68,10 @@ export function printHelp(logger: (message: string) => void = console.log) {
 `);
 }
 
-export async function runCli(args: string[], runtime: CliRuntime = defaultRuntime()) {
+export async function runCli(
+  args: string[],
+  runtime: CliRuntime = defaultRuntime(),
+) {
   const command = args[0];
   const subcommand = args[1];
 
@@ -82,7 +89,7 @@ export async function runCli(args: string[], runtime: CliRuntime = defaultRuntim
     if (subcommand === "login") return runtime.login();
     if (subcommand === "logout") return runtime.logout();
     if (subcommand === "status") return runtime.status();
-    runtime.log('  Usage: schift auth <login|logout|status>\n');
+    runtime.log("  Usage: schift auth <login|logout|status>\n");
     return;
   }
 
@@ -92,6 +99,10 @@ export async function runCli(args: string[], runtime: CliRuntime = defaultRuntim
 
   if (command === "providers") {
     return runtime.providers(args.slice(1));
+  }
+
+  if (command === "agent") {
+    return runtime.agent(args.slice(1));
   }
 
   if (command === "remember" || command === "rem" || command === "save") {
@@ -115,7 +126,10 @@ export async function runCli(args: string[], runtime: CliRuntime = defaultRuntim
   runtime.exit(1);
 }
 
-export async function main(args: string[] = process.argv.slice(2), runtime: CliRuntime = defaultRuntime()) {
+export async function main(
+  args: string[] = process.argv.slice(2),
+  runtime: CliRuntime = defaultRuntime(),
+) {
   try {
     await runCli(args, runtime);
   } catch (err) {
@@ -123,4 +137,3 @@ export async function main(args: string[] = process.argv.slice(2), runtime: CliR
     runtime.exit(1);
   }
 }
-

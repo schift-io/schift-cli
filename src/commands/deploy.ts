@@ -48,7 +48,9 @@ const DEFAULT_OPTIONS: DeployOptions = {
 function loadProjectConfig(cwd: string): SchiftConfig {
   const configPath = resolve(cwd, "schift.config.json");
   if (!existsSync(configPath)) {
-    throw new Error("schift.config.json not found. Are you in a Schift project directory?");
+    throw new Error(
+      "schift.config.json not found. Are you in a Schift project directory?",
+    );
   }
   return JSON.parse(readFileSync(configPath, "utf-8"));
 }
@@ -76,13 +78,21 @@ function slugify(name: string): string {
 }
 
 function isTerminalJobStatus(status: string): boolean {
-  return ["completed", "succeeded", "done", "ready", "failed", "error", "cancelled"].includes(
-    status.toLowerCase(),
-  );
+  return [
+    "completed",
+    "succeeded",
+    "done",
+    "ready",
+    "failed",
+    "error",
+    "cancelled",
+  ].includes(status.toLowerCase());
 }
 
 function isSuccessJobStatus(status: string): boolean {
-  return ["completed", "succeeded", "done", "ready"].includes(status.toLowerCase());
+  return ["completed", "succeeded", "done", "ready"].includes(
+    status.toLowerCase(),
+  );
 }
 
 export function parseDeployOptions(argv: string[] = []): DeployOptions {
@@ -143,7 +153,11 @@ async function apiRequest(
   return resp.json();
 }
 
-async function uploadFile(runtime: DeployRuntime, bucketId: string, filePath: string): Promise<any> {
+async function uploadFile(
+  runtime: DeployRuntime,
+  bucketId: string,
+  filePath: string,
+): Promise<any> {
   const apiKey = resolveApiKey(runtime);
   if (!apiKey) {
     throw new Error('Not authenticated. Run "schift auth login" first.');
@@ -156,14 +170,17 @@ async function uploadFile(runtime: DeployRuntime, bucketId: string, filePath: st
   const blob = new Blob([fileContent]);
   formData.append("files", blob, fileName);
 
-  const resp = await runtime.fetch(`${runtime.getApiUrl()}/v1/buckets/${bucketId}/upload`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "User-Agent": "schift-cli/0.1.0",
+  const resp = await runtime.fetch(
+    `${runtime.getApiUrl()}/v1/buckets/${bucketId}/upload`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "User-Agent": "schift-cli/0.1.0",
+      },
+      body: formData,
     },
-    body: formData,
-  });
+  );
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => "");
@@ -180,7 +197,10 @@ function extractJobIds(uploadResult: any): string[] {
     .filter((id: string) => !!id);
 }
 
-async function waitForJobs(runtime: DeployRuntime, jobIds: string[]): Promise<void> {
+async function waitForJobs(
+  runtime: DeployRuntime,
+  jobIds: string[],
+): Promise<void> {
   for (const jobId of jobIds) {
     let lastStatus = "queued";
 
@@ -250,11 +270,16 @@ export async function deployWithRuntime(
     runtime.log("\n  Stage 1/6: Ensure Agent/Bucket");
   }
 
-  const agent: { agent_id: string; slug: string; bucket_id: string; bucket_name: string; endpoint: string } =
-    await apiRequest(runtime, "PUT", `/v1/agents/${slug}`, {
-      name: config.agent.name || config.name,
-      description: config.agent.instructions || "",
-    });
+  const agent: {
+    agent_id: string;
+    slug: string;
+    bucket_id: string;
+    bucket_name: string;
+    endpoint: string;
+  } = await apiRequest(runtime, "PUT", `/v1/agents/${slug}`, {
+    name: config.agent.name || config.name,
+    description: config.agent.instructions || "",
+  });
 
   // Register as Managed Agent (new API) for /v1/agents/{id}/runs support
   let managedAgentId: string | null = null;
@@ -283,7 +308,9 @@ export async function deployWithRuntime(
         }
       } catch (innerErr) {
         if (!options.json) {
-          runtime.log(`  (Managed Agent update skipped: ${(innerErr as Error).message})`);
+          runtime.log(
+            `  (Managed Agent update skipped: ${(innerErr as Error).message})`,
+          );
         }
       }
     }
@@ -293,7 +320,9 @@ export async function deployWithRuntime(
     runtime.log(`  Managed Agent: ${managedAgentId}`);
   }
 
-  const dataDir = config.rag ? resolve(runtime.cwd, config.rag.dataDir || "./data") : null;
+  const dataDir = config.rag
+    ? resolve(runtime.cwd, config.rag.dataDir || "./data")
+    : null;
   const files = dataDir ? collectDataFiles(dataDir) : [];
   const allJobIds: string[] = [];
 
@@ -347,19 +376,30 @@ export async function deployWithRuntime(
       if (!options.json) {
         runtime.write("  Running agent...");
       }
-      const run = await apiRequest(runtime, "POST", `/v1/agents/${managedAgentId}/runs`, {
-        message: "Briefly describe what you can help with.",
-      });
+      const run = await apiRequest(
+        runtime,
+        "POST",
+        `/v1/agents/${managedAgentId}/runs`,
+        {
+          message: "Briefly describe what you can help with.",
+        },
+      );
       const runId = run.id;
       // Poll for completion
       for (let i = 0; i < 60; i++) {
-        const status = await apiRequest(runtime, "GET", `/v1/agents/${managedAgentId}/runs/${runId}`);
+        const status = await apiRequest(
+          runtime,
+          "GET",
+          `/v1/agents/${managedAgentId}/runs/${runId}`,
+        );
         if (status.status === "success") {
           smokeOk = true;
           if (!options.json) {
             runtime.log(" ok");
             const preview = (status.output_text || "").slice(0, 120);
-            runtime.log(`  Agent says: "${preview}${preview.length >= 120 ? "..." : ""}"`);
+            runtime.log(
+              `  Agent says: "${preview}${preview.length >= 120 ? "..." : ""}"`,
+            );
           }
           break;
         }
@@ -382,10 +422,15 @@ export async function deployWithRuntime(
   } else if (options.smoke && config.rag) {
     // Fallback: bucket search
     try {
-      const smoke = await apiRequest(runtime, "POST", `/v1/buckets/${agent.bucket_id}/search`, {
-        query: "What documents are in this knowledge base?",
-        top_k: 1,
-      });
+      const smoke = await apiRequest(
+        runtime,
+        "POST",
+        `/v1/buckets/${agent.bucket_id}/search`,
+        {
+          query: "What documents are in this knowledge base?",
+          top_k: 1,
+        },
+      );
       smokeOk = Array.isArray(smoke?.results);
       if (!options.json) {
         runtime.log(`  Smoke search: ${smokeOk ? "ok" : "no results"}`);
@@ -409,7 +454,10 @@ export async function deployWithRuntime(
     bucketId: agent.bucket_id,
     bucketName: agent.bucket_name,
     endpoint: agentEndpoint,
-    managedAgentEndpoint: managedAgentId ? `${apiUrl}/v1/agents/${managedAgentId}/runs` : undefined,
+    managedAgentEndpoint: managedAgentId
+      ? `${apiUrl}/v1/agents/${managedAgentId}/runs`
+      : undefined,
+    cliCall: `schift agent call ${agent.agent_id} "What can you help me with?"`,
     webhook: "Configure webhook in Schift dashboard",
     filesUploaded: files.length,
     jobs: allJobIds.length,
@@ -427,13 +475,19 @@ export async function deployWithRuntime(
   runtime.log(`  Agent URL: ${agentEndpoint}`);
   runtime.log("  Webhook URL: Configure webhook in Schift dashboard");
   runtime.log("\n  Search now:");
-  runtime.log(`  curl -X POST ${agentEndpoint} \\\n    -H \"Authorization: Bearer $SCHIFT_API_KEY\" \\\n    -H \"Content-Type: application/json\" \\\n    -d '{\"query\": \"What can you help me with?\", \"top_k\": 5}'\n`);
+  runtime.log(
+    `  curl -X POST ${agentEndpoint} \\\n    -H \"Authorization: Bearer $SCHIFT_API_KEY\" \\\n    -H \"Content-Type: application/json\" \\\n    -d '{\"query\": \"What can you help me with?\", \"top_k\": 5}'\n`,
+  );
   runtime.log(`  Trial chat now (bucket: ${agent.bucket_name}):`);
-  runtime.log(`  curl -X POST ${trialEndpoint} \\\n    -H \"Authorization: Bearer $SCHIFT_API_KEY\" \\\n    -H \"Content-Type: application/json\" \\\n    -d '{\"bucket\": \"${agent.bucket_name}\", \"message\": \"Say hello from Schift in one short sentence.\"}'\n`);
+  runtime.log(
+    `  curl -X POST ${trialEndpoint} \\\n    -H \"Authorization: Bearer $SCHIFT_API_KEY\" \\\n    -H \"Content-Type: application/json\" \\\n    -d '{\"bucket\": \"${agent.bucket_name}\", \"message\": \"Say hello from Schift in one short sentence.\"}'\n`,
+  );
   if (managedAgentId) {
     const runEndpoint = `${apiUrl}/v1/agents/${managedAgentId}/runs`;
     runtime.log("  Run agent (Managed Agent API):");
-    runtime.log(`  curl -X POST ${runEndpoint} \\\n    -H "Authorization: Bearer $SCHIFT_API_KEY" \\\n    -H "Content-Type: application/json" \\\n    -d '{"message": "What can you help me with?"}'\n`);
+    runtime.log(
+      `  curl -X POST ${runEndpoint} \\\n    -H "Authorization: Bearer $SCHIFT_API_KEY" \\\n    -H "Content-Type: application/json" \\\n    -d '{"message": "What can you help me with?"}'\n`,
+    );
   }
   runtime.log("  Configure BYOK:");
   runtime.log("  schift providers set anthropic");
