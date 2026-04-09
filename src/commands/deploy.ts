@@ -336,9 +336,47 @@ export async function deployWithRuntime(
 
   let smokeOk = false;
   if (!options.json) {
-    runtime.log("\n  Stage 5/6: Smoke search");
+    runtime.log("\n  Stage 5/6: Smoke test");
   }
-  if (options.smoke && config.rag) {
+  if (options.smoke && managedAgentId) {
+    try {
+      if (!options.json) {
+        runtime.write("  Running agent...");
+      }
+      const run = await apiRequest(runtime, "POST", `/v1/agents/${managedAgentId}/runs`, {
+        message: "Briefly describe what you can help with.",
+      });
+      const runId = run.id;
+      // Poll for completion
+      for (let i = 0; i < 60; i++) {
+        const status = await apiRequest(runtime, "GET", `/v1/agents/${managedAgentId}/runs/${runId}`);
+        if (status.status === "success") {
+          smokeOk = true;
+          if (!options.json) {
+            runtime.log(" ok");
+            const preview = (status.output_text || "").slice(0, 120);
+            runtime.log(`  Agent says: "${preview}${preview.length >= 120 ? "..." : ""}"`);
+          }
+          break;
+        }
+        if (status.status === "error" || status.status === "timeout") {
+          if (!options.json) {
+            runtime.log(` failed (${status.error || status.status})`);
+          }
+          break;
+        }
+        await runtime.sleep(1000);
+      }
+      if (!smokeOk && !options.json) {
+        runtime.log(" timed out");
+      }
+    } catch (err) {
+      if (!options.json) {
+        runtime.log(` failed (${(err as Error).message})`);
+      }
+    }
+  } else if (options.smoke && config.rag) {
+    // Fallback: bucket search
     try {
       const smoke = await apiRequest(runtime, "POST", `/v1/buckets/${agent.bucket_id}/search`, {
         query: "What documents are in this knowledge base?",
@@ -354,7 +392,7 @@ export async function deployWithRuntime(
       }
     }
   } else if (!options.json) {
-    runtime.log("  Smoke search: skipped");
+    runtime.log("  Smoke test: skipped");
   }
 
   const apiUrl = runtime.getApiUrl();
