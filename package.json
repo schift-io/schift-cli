@@ -1,17 +1,17 @@
 {
   "name": "@schift-io/cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Schift CLI - Deploy and manage AI agents",
   "type": "module",
   "bin": {
-    "schift": "./dist/index.js"
+    "schift": "./dist/cli.js"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --clean",
-    "dev": "tsup src/index.ts --format esm --watch",
+    "build": "tsup",
+    "dev": "tsup --watch",
     "test": "vitest run"
   },
   "keywords": [

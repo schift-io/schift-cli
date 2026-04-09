@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-import { pathToFileURL } from "node:url";
 import { login, logout, status } from "./commands/auth.js";
 import { deploy } from "./commands/deploy.js";
 import { providers } from "./commands/providers.js";
@@ -126,8 +124,3 @@ export async function main(args: string[] = process.argv.slice(2), runtime: CliR
   }
 }
 
-/* v8 ignore start */
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main();
-}
-/* v8 ignore stop */
