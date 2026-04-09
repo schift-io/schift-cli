@@ -5,7 +5,7 @@ import { getApiKey, getApiUrl } from "../config.js";
 interface SchiftConfig {
   name: string;
   template?: string;
-  agent: { name: string; model: string; instructions: string };
+  agent?: { name: string; model: string; instructions: string };
   rag?: { bucket: string; dataDir: string };
 }
 
@@ -201,31 +201,64 @@ async function waitForJobs(
   runtime: DeployRuntime,
   jobIds: string[],
 ): Promise<void> {
-  for (const jobId of jobIds) {
-    let lastStatus = "queued";
+  const unique = [...new Set(jobIds)];
+  const total = unique.length;
+  let completed = 0;
+  const lastStatus: Record<string, string> = {};
+  const fileNames: Record<string, string> = {};
+  const errors: string[] = [];
 
-    for (let attempt = 0; attempt < 120; attempt++) {
-      const job = await apiRequest(runtime, "GET", `/v1/jobs/${jobId}`);
-      const status = String(job?.status || "unknown");
+  if (total === 0) return;
 
-      if (status !== lastStatus) {
-        runtime.log(`    ${jobId}: ${status}`);
-        lastStatus = status;
-      }
+  runtime.log(`    Tracking ${total} job${total > 1 ? "s" : ""}...`);
 
-      if (isTerminalJobStatus(status)) {
-        if (!isSuccessJobStatus(status)) {
-          throw new Error(`Processing failed for ${jobId}: ${status}`);
+  // Poll all jobs in parallel
+  await Promise.all(
+    unique.map(async (jobId) => {
+      for (let attempt = 0; attempt < 120; attempt++) {
+        const job = await apiRequest(runtime, "GET", `/v1/jobs/${jobId}`);
+        const status = String(job?.status || "unknown");
+
+        // Cache filename from first response
+        if (!fileNames[jobId] && job?.file_name) {
+          fileNames[jobId] = job.file_name;
         }
-        break;
+        const label = fileNames[jobId] || jobId.slice(0, 8);
+
+        if (status !== lastStatus[jobId]) {
+          lastStatus[jobId] = status;
+          runtime.log(`    [${completed}/${total}] ${label}: ${status}`);
+        }
+
+        if (isTerminalJobStatus(status)) {
+          if (isSuccessJobStatus(status)) {
+            completed++;
+            runtime.log(`    [${completed}/${total}] ${label}: done`);
+          } else {
+            const errorDetail = job?.error_message
+              ? job.error_message.slice(0, 100)
+              : status;
+            errors.push(`${label}: ${errorDetail}`);
+            completed++;
+            runtime.log(`    [${completed}/${total}] ${label}: FAILED`);
+          }
+          return;
+        }
+
+        await runtime.sleep(1000);
       }
 
-      await runtime.sleep(1000);
-    }
+      errors.push(`${fileNames[jobId] || jobId.slice(0, 8)}: timed out`);
+      completed++;
+    }),
+  );
 
-    if (!isSuccessJobStatus(lastStatus)) {
-      throw new Error(`Processing timed out for ${jobId}`);
+  if (errors.length > 0) {
+    runtime.log(`\n  ${errors.length} job${errors.length > 1 ? "s" : ""} failed:`);
+    for (const err of errors) {
+      runtime.log(`    - ${err}`);
     }
+    throw new Error(`${errors.length} processing job${errors.length > 1 ? "s" : ""} failed`);
   }
 }
 
@@ -262,7 +295,7 @@ export async function deployWithRuntime(
     return;
   }
 
-  const slug = slugify(config.agent.name || config.name);
+  const slug = slugify(config.agent?.name || config.name);
 
   if (!options.json) {
     runtime.log("\n  Deploying to Schift Cloud...\n");
@@ -277,8 +310,8 @@ export async function deployWithRuntime(
     bucket_name: string;
     endpoint: string;
   } = await apiRequest(runtime, "PUT", `/v1/agents/${slug}`, {
-    name: config.agent.name || config.name,
-    description: config.agent.instructions || "",
+    name: config.agent?.name || config.name,
+    description: config.agent?.instructions || "",
   });
 
   // Register as Managed Agent (new API) for /v1/agents/{id}/runs support
@@ -286,8 +319,8 @@ export async function deployWithRuntime(
   try {
     const managedAgent = await apiRequest(runtime, "POST", `/v1/agents`, {
       name: slug,
-      model: config.agent.model || "gemini-2.5-flash-lite",
-      instructions: config.agent.instructions || "",
+      model: config.agent?.model || "gemini-2.5-flash-lite",
+      instructions: config.agent?.instructions || "",
       rag_config: { bucket_id: agent.bucket_id, top_k: 5 },
     });
     managedAgentId = managedAgent.id;
@@ -301,8 +334,8 @@ export async function deployWithRuntime(
         if (existing) {
           managedAgentId = existing.id;
           await apiRequest(runtime, "PATCH", `/v1/agents/${existing.id}`, {
-            model: config.agent.model || "gemini-2.5-flash-lite",
-            instructions: config.agent.instructions || "",
+            model: config.agent?.model || "gemini-2.5-flash-lite",
+            instructions: config.agent?.instructions || "",
             rag_config: { bucket_id: agent.bucket_id, top_k: 5 },
           });
         }
@@ -327,24 +360,38 @@ export async function deployWithRuntime(
   const allJobIds: string[] = [];
 
   if (!options.json) {
-    runtime.log(`  Agent: ${config.agent.name} (${agent.agent_id})`);
+    runtime.log(`  Agent: ${config.agent?.name || config.name} (${agent.agent_id})`);
     runtime.log(`  Bucket: ${agent.bucket_name}`);
     runtime.log("\n  Stage 2/6: Upload files");
   }
 
   if (files.length > 0) {
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const fileName = path.basename(file);
-      if (!options.json) {
-        runtime.write(`    ${progressBar(i + 1, files.length)} ${fileName}...`);
-      }
-      const uploadResult = await uploadFile(runtime, agent.bucket_id, file);
-      const jobIds = extractJobIds(uploadResult);
-      allJobIds.push(...jobIds);
-      if (!options.json) {
-        runtime.log(" done");
-      }
+    // Upload all files in parallel
+    const CONCURRENCY = 5;
+    const uploadResults: any[] = [];
+
+    for (let start = 0; start < files.length; start += CONCURRENCY) {
+      const batch = files.slice(start, start + CONCURRENCY);
+      const results = await Promise.all(
+        batch.map(async (file, batchIdx) => {
+          const idx = start + batchIdx;
+          const fileName = path.basename(file);
+          if (!options.json) {
+            runtime.log(`    ${progressBar(idx + 1, files.length)} ${fileName}...`);
+          }
+          const result = await uploadFile(runtime, agent.bucket_id, file);
+          return result;
+        }),
+      );
+      uploadResults.push(...results);
+    }
+
+    for (const result of uploadResults) {
+      allJobIds.push(...extractJobIds(result));
+    }
+
+    if (!options.json) {
+      runtime.log(`    ${files.length} file${files.length > 1 ? "s" : ""} uploaded`);
     }
   } else if (!options.json) {
     runtime.log(`  No data files found in ${config.rag?.dataDir || "./data"}`);
@@ -449,7 +496,7 @@ export async function deployWithRuntime(
 
   const summary = {
     agentId: agent.agent_id,
-    agentName: config.agent.name,
+    agentName: config.agent?.name || config.name,
     managedAgentId: managedAgentId || undefined,
     bucketId: agent.bucket_id,
     bucketName: agent.bucket_name,

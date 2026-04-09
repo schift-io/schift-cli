@@ -609,7 +609,7 @@ describe("deployWithRuntime", () => {
         },
         runtime,
       ),
-    ).rejects.toThrow("Processing failed for j1: failed");
+    ).rejects.toThrow("1 processing job failed");
   });
 
   it("throws when processing job times out", async () => {
@@ -689,7 +689,7 @@ describe("deployWithRuntime", () => {
         },
         runtime,
       ),
-    ).rejects.toThrow("Processing timed out for j1");
+    ).rejects.toThrow("1 processing job failed");
     expect(sleepCalls).toBe(120);
   });
 

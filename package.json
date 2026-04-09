@@ -1,6 +1,6 @@
 {
   "name": "@schift-io/cli",
-  "version": "0.1.5",
+  "version": "0.1.8",
   "description": "Schift CLI - Deploy and manage AI agents",
   "type": "module",
   "bin": {
