@@ -3,6 +3,7 @@ import { deploy } from "./commands/deploy.js";
 import { providers } from "./commands/providers.js";
 import { agent } from "./commands/agent.js";
 import { remember, search, ask, ingest } from "./commands/memory.js";
+import { migrate } from "./commands/migrate.js";
 import { VERSION } from "./version.js";
 
 export { VERSION } from "./version.js";
@@ -21,6 +22,7 @@ export interface CliRuntime {
   search: (argv: string[]) => Promise<void> | void;
   ask: (argv: string[]) => Promise<void> | void;
   ingest: (argv: string[]) => Promise<void> | void;
+  migrate: (argv?: string[]) => Promise<void> | void;
 }
 
 /* v8 ignore start */
@@ -39,6 +41,7 @@ function defaultRuntime(): CliRuntime {
     search,
     ask,
     ingest,
+    migrate,
   };
 }
 /* v8 ignore stop */
@@ -62,6 +65,12 @@ export function printHelp(logger: (message: string) => void = console.log) {
     search "..."     Semantic search your knowledge
     ask "..."        RAG Q&A over your knowledge
     ingest ./path    Bulk ingest local files
+
+  Migration:
+    migrate plan     Show tier + price for a corpus size (no auth)
+    migrate card add Add a card on file (no charge until next month's plan)
+    migrate run      Kick off a vector store migration to Schift
+    migrate status   Poll a migration job
 
   Options:
     --version      Show version
@@ -120,6 +129,10 @@ export async function runCli(
 
   if (command === "ingest") {
     return runtime.ingest(args.slice(1));
+  }
+
+  if (command === "migrate") {
+    return runtime.migrate(args.slice(1));
   }
 
   runtime.error(`  Unknown command: ${command}\n`);

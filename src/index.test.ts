@@ -18,6 +18,7 @@ function createRuntime(): CliRuntime {
     search: vi.fn(),
     ask: vi.fn(),
     ingest: vi.fn(),
+    migrate: vi.fn(),
   };
 }
 
@@ -122,6 +123,7 @@ describe("main", () => {
       search: vi.fn(),
       ask: vi.fn(),
       ingest: vi.fn(),
+      migrate: vi.fn(),
     };
 
     await expect(main(["deploy"], runtime)).rejects.toThrow("EXIT:1");

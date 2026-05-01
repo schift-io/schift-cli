@@ -7,12 +7,15 @@ const CONFIG_FILE = resolve(CONFIG_DIR, "config.json");
 
 export const ENV_API_KEY = "SCHIFT_API_KEY";
 export const ENV_API_URL = "SCHIFT_API_URL";
+export const ENV_MIGRATE_URL = "SCHIFT_MIGRATE_URL";
 export const DEFAULT_API_URL = "https://api.schift.io";
 export const DEFAULT_WEB_URL = "https://schift.io";
+export const DEFAULT_MIGRATE_URL = "https://migrate.schift.io";
 
 interface Config {
   api_key?: string;
   api_url?: string;
+  migrate_url?: string;
   [key: string]: unknown;
 }
 
@@ -59,4 +62,8 @@ export function getApiUrl(): string {
 
 export function getWebUrl(): string {
   return process.env["SCHIFT_WEB_URL"] || DEFAULT_WEB_URL;
+}
+
+export function getMigrateUrl(): string {
+  return process.env[ENV_MIGRATE_URL] || loadConfig().migrate_url || DEFAULT_MIGRATE_URL;
 }
