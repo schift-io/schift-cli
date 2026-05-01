@@ -7,7 +7,17 @@ import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { getApiKey, setApiKey, clearApiKey, getWebUrl } from "../config.js";
+import { getApiKey, setApiKey, clearApiKey, getWebUrl, getApiUrl } from "../config.js";
+
+const LOGIN_HOST = "127.0.0.1";
+
+function previewKey(key: string): string {
+  return key.length > 14 ? `${key.slice(0, 10)}...${key.slice(-4)}` : "***";
+}
+
+function buildShellExportHint(key: string): string {
+  return `  export SCHIFT_API_KEY=<${previewKey(key)}>\n`;
+}
 
 function openBrowserForPlatform(
   platform: NodeJS.Platform,
@@ -49,11 +59,17 @@ export async function __test_findFreePort() {
   return findFreePort();
 }
 
+export const __test_loginHost = LOGIN_HOST;
+
+export function __test_buildShellExportHint(key: string) {
+  return buildShellExportHint(key);
+}
+
 /* v8 ignore start */
 function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = createServer();
-    srv.listen(0, () => {
+    srv.listen(0, LOGIN_HOST, () => {
       const addr = srv.address();
       if (addr && typeof addr === "object") {
         const port = addr.port;
@@ -86,14 +102,17 @@ interface LoginCallbackResult {
   headers?: Record<string, string>;
   body?: string;
   action: "resolve" | "reject" | "continue";
-  token?: string;
+  // `code` is a one-time short-lived opaque exchange code. The CLI redeems
+  // it for the actual API key via POST /v1/auth/cli/code-exchange so the
+  // raw key never touches the URL.
+  code?: string;
   errorMessage?: string;
 }
 
 function resolveLoginCallback(params: {
   expectedState: string;
   receivedState: string | null;
-  token: string | null;
+  code: string | null;
   error: string | null;
   webUrl: string;
 }): LoginCallbackResult {
@@ -114,10 +133,10 @@ function resolveLoginCallback(params: {
     };
   }
 
-  if (!params.token || !params.token.startsWith("sch_")) {
+  if (!params.code || params.code.length < 16) {
     return {
       statusCode: 400,
-      body: "<html><body><h2>Invalid token</h2><p>Please try again.</p></body></html>",
+      body: "<html><body><h2>Invalid code</h2><p>Please try again.</p></body></html>",
       action: "continue",
     };
   }
@@ -128,9 +147,28 @@ function resolveLoginCallback(params: {
       Location: `${params.webUrl}/auth/cli?status=success`,
     },
     action: "resolve",
-    token: params.token,
+    code: params.code,
   };
 }
+
+/* v8 ignore start */
+async function redeemCodeForApiKey(code: string): Promise<string> {
+  const apiUrl = getApiUrl().replace(/\/$/, "");
+  const res = await fetch(`${apiUrl}/v1/auth/cli/code-exchange`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  if (!res.ok) {
+    throw new Error(`Code exchange failed: HTTP ${res.status}`);
+  }
+  const payload = (await res.json()) as { key?: string };
+  if (!payload.key || typeof payload.key !== "string") {
+    throw new Error("Code exchange response missing API key");
+  }
+  return payload.key;
+}
+/* v8 ignore stop */
 
 export function __test_saveToEnvLocal(key: string, cwd: string) {
   saveToEnvLocal(key, cwd);
@@ -139,7 +177,7 @@ export function __test_saveToEnvLocal(key: string, cwd: string) {
 export function __test_resolveLoginCallback(params: {
   expectedState: string;
   receivedState: string | null;
-  token: string | null;
+  code: string | null;
   error: string | null;
   webUrl: string;
 }) {
@@ -150,9 +188,8 @@ export function __test_resolveLoginCallback(params: {
 export async function login() {
   const existing = getApiKey();
   if (existing) {
-    const preview = existing.slice(0, 10) + "..." + existing.slice(-4);
     console.log(
-      `\n  Existing key found (${preview}). Re-authenticating will replace it.\n`,
+      `\n  Existing key found (${previewKey(existing)}). Re-authenticating will replace it.\n`,
     );
   }
 
@@ -160,7 +197,11 @@ export async function login() {
   const port = await findFreePort();
   const webUrl = getWebUrl();
 
-  // Start local callback server
+  // Start local callback server.
+  //
+  // The browser redirects to /callback?code=<opaque>&state=<state>. We then
+  // POST the code to the API to redeem the actual API key — the key never
+  // appears in URL-bearing surfaces (browser history, server access logs).
   const apiKey = await new Promise<string>((resolveKey, reject) => {
     const timeout = setTimeout(
       () => {
@@ -177,7 +218,7 @@ export async function login() {
         const result = resolveLoginCallback({
           expectedState: state,
           receivedState: url.searchParams.get("state"),
-          token: url.searchParams.get("token"),
+          code: url.searchParams.get("code"),
           error: url.searchParams.get("error"),
           webUrl,
         });
@@ -198,7 +239,9 @@ export async function login() {
         if (result.action === "resolve") {
           clearTimeout(timeout);
           server.close();
-          resolveKey(result.token!);
+          redeemCodeForApiKey(result.code!)
+            .then(resolveKey)
+            .catch(reject);
         }
         return;
       } else {
@@ -207,7 +250,7 @@ export async function login() {
       }
     });
 
-    server.listen(port, () => {
+    server.listen(port, LOGIN_HOST, () => {
       const authUrl = `${webUrl}/auth/cli?port=${port}&state=${state}`;
       console.log(`\n  Opening browser for authentication...\n`);
       console.log(`  If the browser doesn't open, visit:\n  ${authUrl}\n`);
@@ -230,8 +273,9 @@ export async function login() {
     console.log(`  API key saved to .env.local`);
   }
 
-  const preview = apiKey.slice(0, 10) + "..." + apiKey.slice(-4);
-  console.log(`\n  Authenticated successfully (${preview})\n`);
+  console.log(`\n  Authenticated successfully (${previewKey(apiKey)})\n`);
+  console.log(`  To use with curl, run:`);
+  console.log(buildShellExportHint(apiKey));
 }
 /* v8 ignore stop */
 
@@ -249,11 +293,9 @@ export function status() {
   const configKey = getApiKey();
 
   if (envKey) {
-    const preview = envKey.slice(0, 10) + "..." + envKey.slice(-4);
-    console.log(`  Authenticated via SCHIFT_API_KEY env var (${preview})\n`);
+    console.log(`  Authenticated via SCHIFT_API_KEY env var (${previewKey(envKey)})\n`);
   } else if (configKey) {
-    const preview = configKey.slice(0, 10) + "..." + configKey.slice(-4);
-    console.log(`  Authenticated via ~/.schift/config.json (${preview})\n`);
+    console.log(`  Authenticated via ~/.schift/config.json (${previewKey(configKey)})\n`);
   } else {
     console.log(
       `  Not authenticated. Run "schift auth login" to get started.\n`,

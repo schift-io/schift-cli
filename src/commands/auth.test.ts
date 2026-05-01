@@ -3,7 +3,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  __test_buildShellExportHint,
   __test_findFreePort,
+  __test_loginHost,
   __test_openBrowserForPlatform,
   __test_resolveLoginCallback,
   __test_saveToEnvLocal,
@@ -69,10 +71,21 @@ describe("openBrowser", () => {
 });
 
 describe("login helpers", () => {
+  it("binds the OAuth callback listener to loopback only", () => {
+    expect(__test_loginHost).toBe("127.0.0.1");
+  });
+
   it("finds a free port", async () => {
     const port = await __test_findFreePort();
     expect(typeof port).toBe("number");
     expect(port).toBeGreaterThan(0);
+  });
+
+  it("does not print the full API key in shell export guidance", () => {
+    const hint = __test_buildShellExportHint("sch_new123456789012345");
+
+    expect(hint).toContain("sch_new123...2345");
+    expect(hint).not.toContain("sch_new123456789012345");
   });
 
   it("appends SCHIFT_API_KEY to new .env.local", () => {
@@ -122,7 +135,7 @@ describe("login helpers", () => {
       __test_resolveLoginCallback({
         expectedState: "expected",
         receivedState: "expected",
-        token: null,
+        code: null,
         error: "access_denied",
         webUrl: "https://schift.io",
       }),
@@ -139,7 +152,7 @@ describe("login helpers", () => {
       __test_resolveLoginCallback({
         expectedState: "expected",
         receivedState: "other",
-        token: "sch_test123456789012345",
+        code: "abcdefghijklmnop_validcode",
         error: null,
         webUrl: "https://schift.io",
       }),
@@ -150,18 +163,18 @@ describe("login helpers", () => {
     });
   });
 
-  it("returns continue result for invalid token", () => {
+  it("returns continue result for invalid code", () => {
     expect(
       __test_resolveLoginCallback({
         expectedState: "expected",
         receivedState: "expected",
-        token: "bad_token",
+        code: "short",
         error: null,
         webUrl: "https://schift.io",
       }),
     ).toEqual({
       statusCode: 400,
-      body: "<html><body><h2>Invalid token</h2><p>Please try again.</p></body></html>",
+      body: "<html><body><h2>Invalid code</h2><p>Please try again.</p></body></html>",
       action: "continue",
     });
   });
@@ -171,7 +184,7 @@ describe("login helpers", () => {
       __test_resolveLoginCallback({
         expectedState: "expected",
         receivedState: "expected",
-        token: "sch_test123456789012345",
+        code: "abcdefghijklmnop_validcode",
         error: null,
         webUrl: "https://schift.io",
       }),
@@ -181,7 +194,7 @@ describe("login helpers", () => {
         Location: "https://schift.io/auth/cli?status=success",
       },
       action: "resolve",
-      token: "sch_test123456789012345",
+      code: "abcdefghijklmnop_validcode",
     });
   });
 });

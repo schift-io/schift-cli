@@ -2,7 +2,11 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { deployWithRuntime, parseDeployOptions } from "./deploy.js";
+import {
+  __test_collectDataFiles,
+  deployWithRuntime,
+  parseDeployOptions,
+} from "./deploy.js";
 
 describe("parseDeployOptions", () => {
   it("parses defaults", () => {
@@ -23,6 +27,25 @@ describe("parseDeployOptions", () => {
 
   it("throws for unknown flag", () => {
     expect(() => parseDeployOptions(["--wat"])).toThrow("Unknown option");
+  });
+});
+
+describe("collectDataFiles", () => {
+  it("skips symlinks so deploy cannot upload files outside dataDir", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "schift-deploy-files-"));
+    const dataDir = path.join(tmp, "data");
+    const outside = path.join(tmp, "outside-secret.txt");
+    fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(path.join(dataDir, "public.md"), "safe", "utf-8");
+    fs.writeFileSync(outside, "secret", "utf-8");
+    fs.symlinkSync(outside, path.join(dataDir, "linked-secret.txt"));
+
+    const files = __test_collectDataFiles(dataDir).map((file) =>
+      path.relative(dataDir, file),
+    );
+
+    expect(files).toEqual(["public.md"]);
+    fs.rmSync(tmp, { recursive: true, force: true });
   });
 });
 

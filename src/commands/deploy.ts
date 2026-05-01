@@ -1,6 +1,14 @@
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
 import path, { resolve } from "node:path";
 import { getApiKey, getApiUrl } from "../config.js";
+import { USER_AGENT } from "../version.js";
 
 interface SchiftConfig {
   name: string;
@@ -55,19 +63,28 @@ function loadProjectConfig(cwd: string): SchiftConfig {
   return JSON.parse(readFileSync(configPath, "utf-8"));
 }
 
-function collectDataFiles(dir: string): string[] {
+function collectDataFiles(dir: string, rootDir: string = realpathSync(dir)): string[] {
   if (!existsSync(dir)) return [];
   const files: string[] = [];
   for (const entry of readdirSync(dir)) {
     const fullPath = resolve(dir, entry);
+    const linkStat = lstatSync(fullPath);
+    if (linkStat.isSymbolicLink()) continue;
     const stat = statSync(fullPath);
     if (stat.isDirectory()) {
-      files.push(...collectDataFiles(fullPath));
+      files.push(...collectDataFiles(fullPath, rootDir));
     } else if (stat.isFile() && entry !== ".gitkeep") {
-      files.push(fullPath);
+      const resolved = realpathSync(fullPath);
+      if (resolved === rootDir || resolved.startsWith(`${rootDir}${path.sep}`)) {
+        files.push(fullPath);
+      }
     }
   }
   return files;
+}
+
+export function __test_collectDataFiles(dir: string): string[] {
+  return collectDataFiles(dir);
 }
 
 function slugify(name: string): string {
@@ -131,7 +148,7 @@ async function apiRequest(
   const url = `${runtime.getApiUrl()}${apiPath}`;
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
-    "User-Agent": "schift-cli/0.1.0",
+    "User-Agent": USER_AGENT,
   };
   const init: RequestInit = {
     method,
@@ -176,7 +193,7 @@ async function uploadFile(
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        "User-Agent": "schift-cli/0.1.0",
+        "User-Agent": USER_AGENT,
       },
       body: formData,
     },
@@ -517,6 +534,8 @@ export async function deployWithRuntime(
     return;
   }
 
+  const displayKey = resolveApiKey(runtime) || "$SCHIFT_API_KEY";
+
   runtime.log("\n  Stage 6/6: Final usage");
   runtime.log("\n  Deployed successfully!\n");
   runtime.log(`  Agent ID: ${agent.agent_id}`);
@@ -524,19 +543,19 @@ export async function deployWithRuntime(
   runtime.log("  Webhook URL: Configure webhook in Schift dashboard");
   runtime.log("\n  Try it with curl:");
   runtime.log(
-    `  curl -X POST ${agentEndpoint} \\\n    -H \"Authorization: Bearer $SCHIFT_API_KEY\" \\\n    -H \"Content-Type: application/json\" \\\n    -d '{\"query\": \"What can you help me with?\", \"top_k\": 5}'\n`,
+    `  curl -X POST ${agentEndpoint} \\\n    -H "Authorization: Bearer ${displayKey}" \\\n    -H "Content-Type: application/json" \\\n    -d '{"query": "What can you help me with?", "top_k": 5}'\n`,
   );
   runtime.log("  Or with Schift CLI:");
   runtime.log(`  ${summary.cliCall}\n`);
   runtime.log(`  Trial chat now (bucket: ${agent.bucket_name}):`);
   runtime.log(
-    `  curl -X POST ${trialEndpoint} \\\n    -H \"Authorization: Bearer $SCHIFT_API_KEY\" \\\n    -H \"Content-Type: application/json\" \\\n    -d '{\"bucket\": \"${agent.bucket_name}\", \"message\": \"Say hello from Schift in one short sentence.\"}'\n`,
+    `  curl -X POST ${trialEndpoint} \\\n    -H "Authorization: Bearer ${displayKey}" \\\n    -H "Content-Type: application/json" \\\n    -d '{"bucket": "${agent.bucket_name}", "message": "Say hello from Schift in one short sentence."}'\n`,
   );
   if (managedAgentId) {
     const runEndpoint = `${apiUrl}/v1/agents/${managedAgentId}/runs`;
     runtime.log("  Run agent (Managed Agent API):");
     runtime.log(
-      `  curl -X POST ${runEndpoint} \\\n    -H "Authorization: Bearer $SCHIFT_API_KEY" \\\n    -H "Content-Type: application/json" \\\n    -d '{"message": "What can you help me with?"}'\n`,
+      `  curl -X POST ${runEndpoint} \\\n    -H "Authorization: Bearer ${displayKey}" \\\n    -H "Content-Type: application/json" \\\n    -d '{"message": "What can you help me with?"}'\n`,
     );
   }
   runtime.log("  Configure BYOK:");

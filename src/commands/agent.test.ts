@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { VERSION } from "../index.js";
 import { agentCallWithRuntime, parseAgentCallOptions } from "./agent.js";
 
 describe("parseAgentCallOptions", () => {
@@ -74,6 +75,11 @@ describe("agentCallWithRuntime", () => {
       }),
     );
     const init = fetch.mock.calls[0][1] as RequestInit;
+    expect(init.headers).toEqual(
+      expect.objectContaining({
+        "User-Agent": `schift-cli/${VERSION}`,
+      }),
+    );
     expect(JSON.parse(String(init.body))).toEqual({
       query: "refund policy",
       top_k: 5,

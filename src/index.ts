@@ -3,10 +3,9 @@ import { deploy } from "./commands/deploy.js";
 import { providers } from "./commands/providers.js";
 import { agent } from "./commands/agent.js";
 import { remember, search, ask, ingest } from "./commands/memory.js";
+import { VERSION } from "./version.js";
 
-declare const __SCHIFT_VERSION__: string;
-
-export const VERSION = __SCHIFT_VERSION__;
+export { VERSION } from "./version.js";
 
 export interface CliRuntime {
   log: (message: string) => void;

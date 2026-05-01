@@ -1,4 +1,5 @@
 import { getApiKey, getApiUrl } from "../config.js";
+import { USER_AGENT } from "../version.js";
 
 interface AgentCallRuntime {
   getApiKey: () => string | null;
@@ -92,7 +93,7 @@ export async function agentCallWithRuntime(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
-        "User-Agent": "schift-cli/0.1.0",
+        "User-Agent": USER_AGENT,
       },
       body: JSON.stringify({
         query: options.query,
